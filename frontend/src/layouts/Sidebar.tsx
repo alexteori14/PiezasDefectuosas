@@ -1,0 +1,167 @@
+import React from 'react';
+import { NavLink } from 'react-router-dom';
+import {
+  LayoutDashboard,
+  ClipboardList,
+  CheckCircle,
+  FolderKanban,
+  FileBarChart,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  Factory,
+} from 'lucide-react';
+import { useScrap } from '../context/ScrapContext';
+
+interface SidebarProps {
+  collapsed: boolean;
+  onToggleCollapse: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({
+  collapsed,
+  onToggleCollapse,
+  mobileOpen,
+  onCloseMobile,
+}) => {
+  const { resumenKPIs } = useScrap();
+
+  const navItems = [
+    {
+      to: '/dashboard',
+      label: 'Dashboard',
+      icon: <LayoutDashboard className="w-5 h-5 shrink-0" />,
+    },
+    {
+      to: '/movimientos',
+      label: 'Movimientos',
+      icon: <ClipboardList className="w-5 h-5 shrink-0" />,
+    },
+    {
+      to: '/aprobaciones',
+      label: 'Aprobaciones',
+      icon: <CheckCircle className="w-5 h-5 shrink-0" />,
+      badge: resumenKPIs.pendientesAprobar > 0 ? resumenKPIs.pendientesAprobar : undefined,
+      badgeColor: 'bg-amber-500 text-white',
+    },
+    {
+      to: '/motivos',
+      label: 'Catálogo Motivos',
+      icon: <FolderKanban className="w-5 h-5 shrink-0" />,
+    },
+    {
+      to: '/reportes',
+      label: 'Reportes y Métricas',
+      icon: <FileBarChart className="w-5 h-5 shrink-0" />,
+    },
+    {
+      to: '/configuracion',
+      label: 'Configuración',
+      icon: <Settings className="w-5 h-5 shrink-0" />,
+    },
+  ];
+
+  return (
+    <>
+      {/* Mobile Backdrop */}
+      {mobileOpen && (
+        <div
+          onClick={onCloseMobile}
+          className="fixed inset-0 z-40 bg-slate-950/60 lg:hidden backdrop-blur-xs"
+        />
+      )}
+
+      {/* Sidebar Container */}
+      <aside
+        className={`fixed lg:sticky top-0 left-0 z-40 h-screen transition-all duration-300 ease-in-out bg-slate-900 text-slate-300 flex flex-col border-r border-slate-800 shadow-xl ${
+          mobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0'
+        } ${collapsed ? 'lg:w-20' : 'lg:w-64'}`}
+      >
+        {/* Brand Header */}
+        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-700 to-indigo-500 flex items-center justify-center text-white shadow-md shadow-blue-500/20 shrink-0">
+              <Factory className="w-5 h-5" />
+            </div>
+            {(!collapsed || mobileOpen) && (
+              <div className="flex flex-col truncate">
+                <span className="font-bold text-white tracking-wider text-sm">
+                  SCRAP<span className="text-blue-400">MES</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">
+                  Automotive Plant
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Collapse Button (Desktop) */}
+          <button
+            onClick={onToggleCollapse}
+            className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            title={collapsed ? 'Expandir menú' : 'Colapsar menú'}
+          >
+            {collapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {/* Navigation Items */}
+        <div className="flex-1 py-4 px-3 space-y-1.5 overflow-y-auto">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={onCloseMobile}
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-sm transition-all relative group ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/80'
+                }`
+              }
+              title={collapsed ? item.label : undefined}
+            >
+              {item.icon}
+
+              {(!collapsed || mobileOpen) && (
+                <span className="truncate flex-1">{item.label}</span>
+              )}
+
+              {/* Badge for pending approvals */}
+              {item.badge !== undefined && (
+                <span
+                  className={`inline-flex items-center justify-center font-bold font-mono text-[11px] rounded-full px-2 py-0.5 shadow-xs ${
+                    item.badgeColor || 'bg-blue-500 text-white'
+                  } ${collapsed && !mobileOpen ? 'absolute top-1.5 right-1.5 px-1.5 py-0.2' : ''}`}
+                >
+                  {item.badge}
+                </span>
+              )}
+            </NavLink>
+          ))}
+        </div>
+
+        {/* Plant Status Footnote */}
+        <div className="p-3 border-t border-slate-800 shrink-0">
+          {(!collapsed || mobileOpen) ? (
+            <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700/60 text-xs">
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold mb-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>MES Online / SAP S/4</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Planta Saltillo - V 2.4.0
+              </p>
+            </div>
+          ) : (
+            <div className="flex justify-center" title="MES Online / Conectado">
+              <span className="w-3 h-3 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 animate-pulse" />
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
+  );
+};
