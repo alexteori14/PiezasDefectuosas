@@ -9,10 +9,17 @@ export const INFO_PLANTA = {
 };
 
 export const TURNOS_PLANTA: { id: Turno; etiqueta: string; horario: string }[] = [
-  { id: 'Turno 1', etiqueta: 'Turno 1 (Matutino)', horario: '06:00 - 14:30' },
-  { id: 'Turno 2', etiqueta: 'Turno 2 (Vespertino)', horario: '14:30 - 22:30' },
-  { id: 'Turno 3', etiqueta: 'Turno 3 (Nocturno)', horario: '22:30 - 06:00' },
+  { id: 'Turno 1', etiqueta: 'Primer turno', horario: '06:00 - 14:00' },
+  { id: 'Turno 2', etiqueta: 'Segundo turno', horario: '14:00 - 22:00' },
+  { id: 'Turno 3', etiqueta: 'Tercer turno', horario: '22:00 - 06:00' },
 ];
+
+export function obtenerTurnoActual(fecha: Date): Turno {
+  const minutosDelDia = fecha.getHours() * 60 + fecha.getMinutes();
+  if (minutosDelDia >= 6 * 60 && minutosDelDia < 14 * 60) return 'Turno 1';
+  if (minutosDelDia >= 14 * 60 && minutosDelDia < 22 * 60) return 'Turno 2';
+  return 'Turno 3';
+}
 
 /**
  * Catálogo Oficial de dbo.MovimientoTipo (IDs 1 al 8 según Estructura.txt)
@@ -88,6 +95,12 @@ export const COLORES_ESTATUS: Record<EstatusMovimiento, { bg: string; text: stri
     text: 'text-rose-700 dark:text-rose-400',
     border: 'border-rose-300 dark:border-rose-700/50',
     badge: 'bg-rose-100 text-rose-800 dark:bg-rose-900/50 dark:text-rose-300 border border-rose-300/60 dark:border-rose-700/60',
+  },
+  'Sin dictamen': {
+    bg: 'bg-slate-50 dark:bg-slate-950/40',
+    text: 'text-slate-700 dark:text-slate-400',
+    border: 'border-slate-300 dark:border-slate-700/50',
+    badge: 'bg-slate-100 text-slate-700 dark:bg-slate-900/50 dark:text-slate-300 border border-slate-300/60 dark:border-slate-700/60',
   },
   'En Cuarentena': {
     bg: 'bg-purple-50 dark:bg-purple-950/40',

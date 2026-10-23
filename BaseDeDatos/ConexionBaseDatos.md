@@ -1,66 +1,55 @@
-# Guía de Conexión a Base de Datos (SQL Server Management Studio)
+# Conexión a SQL Server
 
-Este documento detalla el archivo exclusivo preparado para la conexión con SQL Server y cómo interactuar con él.
+La configuración local está centralizada en `BaseDeDatos/.env`. Este archivo no se incluye en Git porque puede contener credenciales. Para crear uno nuevo, copia `BaseDeDatos/.env.example` como `BaseDeDatos/.env` y edita sus valores.
 
----
+El módulo de conexión que utiliza el backend es `backend/src/config/database.connection.ts`. La prueba de conexión se ejecuta desde la raíz:
 
-## 1. Archivo Exclusivo de Conexión
-
-El archivo principal y exclusivo de conexión se encuentra en:
-```
-backend/src/config/database.connection.ts
-```
-
-### ¿Qué contiene este archivo?
-1. **Configuración de `mssql`**: Servidor, puerto (1433), base de datos (`SCRAP_MES`), usuario y contraseña.
-2. **Pool de conexiones**: Gestión de concurrencia y cierre seguro.
-3. **Manejo de Cifrado y Certificados**: Opciones `trustServerCertificate: true` para entornos locales y corporativos.
-4. **Función de Autodiagnóstico**: `probarConexionSQLServer()`, que verifica la versión de SQL Server y hace un recuento de `dbo.Movimientos`.
-5. **Ejecutable Directo**: Puede ejecutarse directamente desde la consola con un solo comando.
-
----
-
-## 2. Variables de Entorno (`backend/.env`)
-
-Para conectar a tu servidor de SQL Server Management Studio, edita el archivo `backend/.env`:
-
-```env
-PORT=3001
-
-# Servidor e Instancia de SQL Server
-DB_SERVER=localhost
-# Si es una instancia con nombre, ejemplo: localhost\\SQLEXPRESS o 172.19.216.68
-DB_PORT=1433
-DB_DATABASE=SCRAP_MES
-DB_USER=sa
-DB_PASSWORD=TuPasswordAqui
-
-# Opciones de Red
-DB_ENCRYPT=false
-DB_TRUST_SERVER_CERTIFICATE=true
-DB_CONNECTION_TIMEOUT=5000
-DB_REQUEST_TIMEOUT=15000
-```
-
----
-
-## 3. Comandos Rápidos de Conexión
-
-Desde la raíz del proyecto, puedes probar la conexión en cualquier momento con:
-
-```bash
-# Probar conexión exclusiva a SQL Server
+```powershell
 npm run test:db
 ```
 
-O desde la carpeta `backend`:
-```bash
-npm run test:db
+La prueba abre una conexión y consulta únicamente `DB_NAME()` para comprobar la base activa; no revisa tablas ni modifica datos.
+
+El backend ofrece `GET /api/movimientos`, que carga por defecto únicamente las filas de 2025 (`fecha_hora >= 2025-01-01` y `< 2026-01-01`) y retorna las columnas originales. El detalle se obtiene en `GET /api/movimientos/:id`. Para consultas técnicas con otro rango se pueden enviar `fechaInicio` y `fechaFin` en formato `YYYY-MM-DD`; el inicio es inclusivo y el fin exclusivo. Las vistas de la aplicación no envían un rango alternativo, por lo que trabajan solo con los datos de 2025.
+
+La bandeja de aprobaciones también permite emitir un dictamen mediante `PATCH /api/movimientos/:id/dictamen`. El endpoint actualiza únicamente movimientos con `aprobado = 0`: establece `aprobado` a `1` (aprobado) o `2` (rechazado), guarda el nombre ingresado en `nvAprobadoPor` y registra `GETDATE()` del SQL Server en `dtAprobado`. El ID, decisión y nombre se envían como parámetros validados; un movimiento ya dictaminado no se sobrescribe.
+
+El nombre capturado es un dato de auditoría ingresado por el operador, no una autenticación ni una verificación de identidad. El API no cuenta actualmente con inicio de sesión/autorización para identificar usuarios; antes de exponerlo fuera de un entorno controlado se debe integrar autenticación y limitar permisos de red y de base de datos. La acción modifica datos reales y no se revierte automáticamente.
+
+## Instalación en otro equipo
+
+Desde la raíz del proyecto, instala las dependencias del backend:
+
+```powershell
+npm install --prefix backend
 ```
 
----
+Si npm bloquea el script nativo de `msnodesqlv8`, autorízalo e instala el binario:
 
-## 4. Modo Adaptado vs Modo Conexión Activa
+```powershell
+Push-Location backend
+npm install-scripts approve msnodesqlv8
+npm rebuild msnodesqlv8
+Pop-Location
+```
 
-- **Modo Adaptado (Por defecto):** El frontend y el backend operan al 100% con la estructura exacta de `dbo.Movimientos`, `dbo.MovimientoTipo` y `dbo.EtiquetasCI` sin detenerse por credenciales ni retardos de red.
-- **Modo Conexión Activa:** Cuando tengas tu instancia de SSMS lista y desees consultar directamente las tablas en vivo, solo necesitas llamar a `conectarSQLServer()` desde `database.connection.ts`.
+También se requiere tener instalado el controlador ODBC de 64 bits indicado en `DB_DRIVER`. La cuenta de Windows que ejecute Node.js necesita permiso para conectarse al servidor y a la base configurados.
+
+## Parámetros
+
+| Variable | Uso |
+|---|---|
+| `DB_SERVER` | Nombre o dirección del servidor SQL Server. |
+| `DB_PORT` | Puerto TCP; el valor habitual es `1433`. |
+| `DB_DATABASE` | Base de datos que se abrirá. |
+| `DB_DRIVER` | Nombre del controlador ODBC instalado, por defecto `ODBC Driver 17 for SQL Server`. |
+| `DB_AUTHENTICATION` | `windows` para autenticación integrada, o `sql` para usuario y contraseña SQL. |
+| `DB_USER` / `DB_PASSWORD` | Credenciales requeridas únicamente con `DB_AUTHENTICATION=sql`. |
+| `DB_ENCRYPT` | Activa cifrado TLS cuando vale `true`. |
+| `DB_TRUST_SERVER_CERTIFICATE` | Acepta el certificado del servidor cuando vale `true`. |
+| `DB_CONNECTION_TIMEOUT` | Tiempo máximo de conexión en milisegundos. |
+| `DB_REQUEST_TIMEOUT` | Tiempo máximo de consulta en milisegundos. |
+
+Con autenticación Windows se usa la cuenta que ejecuta el proceso Node.js; esa cuenta debe tener permiso de acceso a la instancia y a la base. El conector utiliza `msnodesqlv8` y el controlador ODBC 17 para SQL Server.
+
+No guardes contraseñas en el archivo de ejemplo ni en archivos versionados. Si cambias a autenticación SQL, conserva las credenciales solo en `BaseDeDatos/.env`.

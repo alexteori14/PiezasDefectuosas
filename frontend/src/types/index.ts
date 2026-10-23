@@ -1,4 +1,4 @@
-export type EstatusMovimiento = 'Pendiente' | 'Aprobado' | 'Rechazado' | 'En Cuarentena' | 'Retrabajo';
+export type EstatusMovimiento = 'Pendiente' | 'Aprobado' | 'Rechazado' | 'Sin dictamen' | 'En Cuarentena' | 'Retrabajo';
 
 export type CategoriaMotivo = 
   | 'Scrap'
@@ -9,7 +9,8 @@ export type CategoriaMotivo =
   | 'metal Finish'
   | 'Traspaleo'
   | 'Impresion Parcial'
-  | 'Reingreso Parcial';
+  | 'Reingreso Parcial'
+  | 'Tipo desconocido';
 
 export type SeveridadMotivo = 'Crítica' | 'Alta' | 'Media' | 'Baja';
 
@@ -73,10 +74,34 @@ export interface HitoHistorial {
   estado: 'completado' | 'actual' | 'pendiente' | 'rechazado';
 }
 
+export interface MovimientoDB {
+  id: number;
+  CertificacionId: number;
+  MATNR: string;
+  fecha_hora: string;
+  credencial: string;
+  MovimientoTipoId: number;
+  cantidad: number;
+  salida: boolean;
+  retorno: boolean;
+  EmpleadoId: string | null;
+  Empleado: string | null;
+  procesado: number | null;
+  aprobado: number | null;
+  RazonId: number | null;
+  centro_costo: string | null;
+  almacen: string | null;
+  serial: string | null;
+  MATNR_FG: string | null;
+  nvAprobadoPor: string | null;
+  dtAprobado: string | null;
+}
+
 /**
  * Modelo de Movimiento alineado a la tabla dbo.Movimientos de SQL Server Management Studio
  */
 export interface Movimiento {
+  datosDB?: MovimientoDB;
   // Columnas exactas de dbo.Movimientos
   id: string; // id PK
   certificacionId: number; // CertificacionId (FK)
@@ -92,8 +117,8 @@ export interface Movimiento {
   empleadoId?: string; // EmpleadoId (varchar 50)
   empleado: string; // Empleado (varchar 250)
   procesado?: number; // procesado (int)
-  aprobado: number; // aprobado (int: 0=Pendiente, 1=Aprobado, 2=Rechazado)
-  razonId: number; // RazonId (int) -> dbo.EtiquetasCI
+  aprobado: number | null; // aprobado (int: 0=Pendiente, 1=Aprobado, 2=Rechazado)
+  razonId: number | null; // RazonId (int) -> dbo.EtiquetasCI
   motivoEspecifico: string; // Descripción de la Razón
   centroCosto?: string; // centro_costo (varchar 50)
   almacen: string; // almacen (varchar 50)
@@ -110,7 +135,7 @@ export interface Movimiento {
   almacenSalida?: string;
   almacenRetorno?: string;
   estatus: EstatusMovimiento;
-  turno: Turno;
+  turno?: Turno;
   unidad: string;
   costoUnitario: number;
   costoTotal: number;

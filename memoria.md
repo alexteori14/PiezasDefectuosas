@@ -1,177 +1,117 @@
-# Memoria del Proyecto: Sistema MES SCRAP Dashboard Industrial
+# Memoria del Proyecto: SCRAP Dashboard
 
-## Resumen Ejecutivo
+## Resumen ejecutivo
 
-El proyecto **SCRAP Dashboard** es una solución corporativa de grado industrial diseñada específicamente para plantas de manufactura automotriz (inspirada en la división de carrocerías, estampado y ensamble de **Magna International** y en lineamientos de diseño **SAP Fiori**, **Microsoft Fluent UI** y **Power BI**). 
+SCRAP Dashboard es una aplicación web para consultar y visualizar movimientos de scrap. El backend se conecta a SQL Server y consulta la tabla `dbo.Movimientos` de la base configurada (actualmente `SOE`). La lista y el detalle son de lectura; la bandeja de aprobaciones actualiza el dictamen de una fila pendiente.
 
-Su propósito central es dotar a la planta de una herramienta unificada, reactiva y visualmente moderna para el **control, consulta, aprobación, trazabilidad y seguimiento de movimientos de materiales no conformes (Scrap)**, eliminando las fricciones del papeleo físico tradicional y la rigidez de las terminales ERP tradicionales.
+La integración real incluye lectura de movimientos de 2025 y dictamen (aprobación/rechazo) en la tabla principal. Las vistas de la aplicación cargan únicamente el año calendario 2025; el backend permite rangos explícitos para consultas técnicas, pero la interfaz no solicita otros años. No se deben describir como implementadas las altas de movimientos, catálogos en vivo, integración con SAP, cálculos de costos ni las funciones todavía basadas en datos locales/de demostración. La aplicación no reemplaza al ERP y no se ha declarado lista para producción.
 
-El proyecto ha evolucionado exitosamente desde su concepción inicial mock hasta una **adaptación integral al modelo de datos de SQL Server Management Studio (SSMS)**, reflejando fielmente la tabla principal `dbo.Movimientos` y sus tablas referenciadas (`dbo.MovimientoTipo`, `dbo.EtiquetasCI` y `dbo.Certificaciones`), resguardando todos los artefactos de base de datos en la carpeta oficial **`BaseDeDatos/`**, preparando un **archivo exclusivo de conexión** (`database.connection.ts`) y habilitando la **ejecución y actualización unificada con un solo comando**.
+## Antecedentes y decisiones
 
----
+- Se revisó `memoria.md` y se contrastaron sus afirmaciones con el código. La documentación anterior describía funciones de aprobación, costos, trazabilidad y conexión relacional como terminadas, aunque varias eran mock o no estaban conectadas.
+- El usuario solicitó centralizar la conexión en un archivo editable, guardar lo relacionado con base de datos en `BaseDeDatos/` y probar solamente la conectividad.
+- Se verificó la conexión a `est04db` / `SOE` con autenticación integrada de Windows. La instancia y los permisos dependen del equipo y de la cuenta Windows que ejecuta Node.js.
+- Se integró la lectura de `SOE.dbo.Movimientos` después de revisar las instrucciones y estructura proporcionadas en `Base de datos Estructura`.
+- Las verificaciones previas de lectura no ejecutaron operaciones de escritura. La nueva función de dictamen sí está diseñada para modificar datos reales una vez que un usuario confirma la acción.
 
-## 1. Contexto de Negocio y Dominio Automotriz
+## Conexión y configuración de base de datos
 
-### 1.1 El Reto del Scrap en la Industria Automotriz
-En la manufactura de componentes de carrocería (fenders, cofre, paneles de puerta, pilares de alta resistencia y fascias plásticas), el control de desperdicio o *Scrap* es un indicador crítico de desempeño operacional:
-- **Cost of Poor Quality (COPQ):** Cada pieza enviada a chatarra representa una pérdida acumulada de materia prima (bobinas de acero, aluminio o resinas), energía, tiempo de ciclo de prensas y mano de obra.
-- **Trazabilidad IATF 16949 / VDA 6.3:** Las normas de calidad automotriz exigen una trazabilidad milimétrica: quién reportó el defecto, en qué máquina/prensa, bajo qué orden de producción (OP), en qué turno y cuál fue la disposición técnica final (desecho, cuarentena o retrabajo).
-- **El Cuello de Botella de las Aprobaciones:** Tradicionalmente, un operador separa una pieza defectuosa y llena un marbete físico de papel. El supervisor de calidad recorre las bahías, firma a mano y un capturista ingresa el movimiento a SAP horas después. Esto genera desfases de inventario en tiempo real (*WIP vs Almacén 99*) e imposibilita la toma de decisiones preventiva.
+La configuración del backend está centralizada en `backend/src/config/database.connection.ts`. El módulo carga las variables de `BaseDeDatos/.env`, crea y reutiliza el pool SQL y expone la comprobación del estado de conexión. La configuración observada usa `mssql` con `msnodesqlv8`, autenticación integrada de Windows y el controlador ODBC configurado. No copiar credenciales ni el contenido privado de `.env` a esta memoria.
 
-### 1.2 Objetivos Estratégicos del Sistema
-1. **Visibilidad Ejecutiva Inmediata:** Proporcionar a gerencia y supervisión un tablero con KPIs en vivo (piezas descartadas, costo financiero acumulado, tasa de scrap vs meta de planta y cuellos de botella).
-2. **Mesa Digital de Aprobaciones:** Permitir al supervisor autorizar o rechazar solicitudes de scrap con un solo clic, actualizando los campos `aprobado`, `nvAprobadoPor` y `dtAprobado`.
-3. **Ficha de Trazabilidad 360°:** Visualizar la historia completa de cada pieza desde su fabricación en prensa hasta su disposición contable, con generación de marbete viajero industrial con código de barras y folio serial.
-4. **Resiliencia Operativa y Usabilidad:** Alta densidad de datos, visualización clara bajo condiciones de luz de taller y soporte completo para modo claro (SAP Fiori Standard) y modo oscuro (Industrial High Contrast).
+Archivos relevantes:
 
----
+- `BaseDeDatos/.env`: configuración privada local, ignorada por Git; no documentar ni publicar su contenido.
+- `BaseDeDatos/.env.example`: plantilla versionable, sin credenciales privadas.
+- `BaseDeDatos/ConexionBaseDatos.md`: instalación y configuración de la conexión.
+- `BaseDeDatos/README.md`: información de la carpeta.
+- `backend/src/config/database.connection.ts`: conexión, pool y prueba de conexión.
+- `backend/src/config/database.ts`: configuración consumida por el backend.
 
-## 2. Principios y Metodologías Aplicadas
+Comandos raíz relevantes:
 
-```mermaid
-flowchart TD
-    PO["Product Owner & Arquitecto"] --> Multiagente["Multiagente: Especialización de Roles"]
-    Multiagente --> Ponytail["Ponytail: Reducción de Complejidad (KISS)"]
-    Multiagente --> Graphify["Graphify: Grafo de Entidades Relacionales"]
-    Multiagente --> AgentSkills["Agent Skills: Mejores Prácticas UI/UX"]
-    
-    Ponytail --> CleanArch["Clean Architecture en Frontend y Backend"]
-    Graphify --> DomainModel["Modelo de Dominio Tipado SSMS (dbo.Movimientos)"]
-    AgentSkills --> IndustrialUI["Diseño Fiori / MES / Power BI"]
-    
-    CleanArch --> FrontendResult["SCRAP MES Production-Ready"]
-    DomainModel --> FrontendResult
-    IndustrialUI --> FrontendResult
-```
+| Comando | Función |
+|---|---|
+| `npm run dev` | Ejecuta backend y frontend en desarrollo. |
+| `npm run build` | Compila backend y frontend. |
+| `npm run test:db` | Comprueba la conexión y la base activa sin modificar tablas. |
 
-### 2.1 Multiagente (Especialización Funcional)
-- **Product Owner:** Delimitó el valor de negocio de los 6 módulos clave (Dashboard, Movimientos, Aprobaciones, Motivos, Reportes, Detalle) y la integración con flujos de turno.
-- **Arquitecto de Base de Datos:** Analizó la estructura de `Base de datos Estructura` (`Estructura.png`, `Estructura.txt` y `TabRazones.png`), diseñó el esquema DDL y generó el diccionario de datos.
-- **Tech Lead Frontend & Backend:** Diseñó el tipado exhaustivo en TypeScript, optimizó el pipeline de Vite con Tailwind CSS v4, estructuró la suite unificada con `concurrently` y garantizó la compilación con cero advertencias.
-- **Senior UX Designer:** Diseñó una paleta inspirada en instrumentación automotriz y suites corporativas, jerarquías visuales limpias, microinteracciones y retroalimentación inmediata.
+Para otro equipo también se requiere el controlador ODBC indicado por `DB_DRIVER`, `msnodesqlv8` correctamente instalado y permisos SQL para la cuenta Windows que ejecute Node.
 
-### 2.2 Ponytail (Eliminación de Sobreingeniería y Portabilidad)
-- **Cero bloqueos por conectividad externa:** En concordancia con la instrucción de diseño, el sistema opera adaptado con 100% de fidelidad estructural sobre el esquema de SQL Server Management Studio sin depender obligatoriamente de sockets de red activos, evitando fallas por configuración de firewall, pero dejando listo el canal exclusivo para conexión directa en vivo.
+## Lectura de `dbo.Movimientos`
 
----
+`backend/src/repositories/movimientosRepository.ts` consulta las filas de `dbo.Movimientos` en la base configurada, conserva los campos originales, ordena por identificador y utiliza parámetros para la búsqueda por ID y para el dictamen. La consulta de lista/detalle es de lectura; el método de dictamen modifica únicamente la decisión de registros pendientes. Se exponen:
 
-## 3. Modelo de Base de Datos SQL Server (`BaseDeDatos/`)
+- `GET /api/movimientos`: lista por defecto solo los movimientos del año calendario 2025, filtrando `fecha_hora` en SQL Server. Acepta un rango explícito con `fechaInicio` (inclusiva) y `fechaFin` (exclusiva), formato `YYYY-MM-DD`, además de filtros como tipo, aprobación, razón y búsqueda.
+- `GET /api/movimientos/:id`: consulta un movimiento por identificador.
+- `GET /api/movimientos/kpis`: obtiene los indicadores disponibles desde el repositorio.
+- `PATCH /api/movimientos/:id/dictamen`: guarda el dictamen de una fila pendiente.
+- `GET /api/health`: informa el estado del backend y de la conexión.
 
-Toda la definición estructural y artefactos SQL se encuentran centralizados en la carpeta **`BaseDeDatos/`**:
+El endpoint de dictamen acepta `aprobado = 1` (aprobación) o `aprobado = 2` (rechazo) y el nombre ingresado del responsable, con máximo 200 caracteres. Actualiza de forma condicional solo filas donde `aprobado = 0`, guardando el estado en `aprobado`, el nombre en `nvAprobadoPor` y la hora del servidor SQL con `GETDATE()` en `dtAprobado`. Si el registro no existe devuelve 404; si ya no está pendiente devuelve 409, sin sobreescribir el dictamen. El ID y los datos se envían como parámetros SQL. El nombre capturado no es una comprobación de identidad: la API no implementa autenticación/autorización, por lo que la acción debe mantenerse en un entorno controlado hasta integrar controles de identidad y acceso.
 
-```
-BaseDeDatos/
-├── 01_Schema_SSMS.sql               # Script DDL completo de tablas e índices
-├── 02_Seeds_SSMS.sql                # Catálogos oficiales y datos maestros de prueba
-├── 03_Vistas_y_Procedimientos.sql  # Vistas completas y SPs de aprobación
-├── Diccionario_Datos_Movimientos.md # Diccionario detallado de campos y reglas
-├── Diagrama_ER.md                   # Diagrama Entidad-Relación en Mermaid
-├── ConexionBaseDatos.md             # Guía exclusiva de conexión y variables de entorno
-└── README.md                        # Guía de despliegue en SSMS
-```
+El rango por defecto es fijo: desde `2025-01-01` inclusive hasta `2026-01-01` exclusivo. El filtro se ejecuta en SQL Server, de modo que Node y el frontend no cargan primero el histórico completo ni movimientos de 2026. Se conservan parámetros opcionales `fechaInicio` y `fechaFin` para consultas técnicas explícitas, aunque las pantallas actuales no los envían.
 
-### 3.1 Mapeo de la Tabla Principal: `dbo.Movimientos`
+El tipo de movimiento puede incluir un nombre calculado en la respuesta. Ese campo no es una columna adicional de la tabla original.
 
-| Columna en SSMS | Tipo de Dato | Nulabilidad | Relación / Descripción de Planta |
-| :--- | :--- | :--- | :--- |
-| `id` | `INT IDENTITY(1,1)` | NOT NULL | **PK Clustered:** Identificador único del movimiento. |
-| `CertificacionId` | `INT` | NOT NULL | **FK (`dbo.Certificaciones`):** Estación o prensa donde se imprimió el marbete. |
-| `MATNR` | `VARCHAR(50)` | NOT NULL | Número de parte SAP de la pieza defectuosa corriendo en la máquina. |
-| `fecha_hora` | `DATETIME` | NOT NULL | Fecha y hora exacta de captura del evento. |
-| `credencial` | `VARCHAR(50)` | NOT NULL | Número de nómina/gafete del empleado solicitante. |
-| `MovimientoTipoId` | `INT` | NOT NULL | **FK (`dbo.MovimientoTipo`):** Tipo de movimiento (1..8). |
-| `cantidad` | `INT` | NOT NULL | Cantidad de piezas defectuosas contabilizadas. |
-| `salida` | `BIT` | NOT NULL | Bandera técnica de egreso de inventario. |
-| `retorno` | `BIT` | NOT NULL | Bandera técnica de retorno de inventario. |
-| `EmpleadoId` | `VARCHAR(50)` | NULL | Código de nómina del empleado. |
-| `Empleado` | `VARCHAR(250)` | NULL | Nombre completo del operador en piso. |
-| `procesado` | `INT` | NULL | Indicador de transmisión a SAP ERP. |
-| `aprobado` | `INT` | NULL | Dictamen: **0 = Pendiente**, **1 = Aprobado**, **2 = Rechazado**. |
-| `RazonId` | `INT` | NULL | **FK (`dbo.EtiquetasCI`):** Código de falla raíz (ej. 5001 = Arrugas). |
-| `centro_costo` | `VARCHAR(50)` | NULL | Centro de costos receptor del gasto de scrap. |
-| `almacen` | `VARCHAR(50)` | NULL | Caracteres del almacén de disposición (ej. `ALM-99`, `ALM-12`). |
-| `serial` | `VARCHAR(50)` | NULL | Número de serie impreso en la etiqueta viajera industrial. |
-| `MATNR_FG` | `VARCHAR(50)` | NULL | Número de parte del ensamble o producto terminado final (*Finished Good*). |
-| `nvAprobadoPor` | `NVARCHAR(200)` | NULL | Nombre del auditor/supervisor de calidad que dictamina. |
-| `dtAprobado` | `DATETIME` | NULL | Timestamp de la aprobación o rechazo en sistema. |
+La tabla original tuvo 20 columnas verificadas en la respuesta:
 
-### 3.2 Tablas Referenciadas Oficiales
-1. **`dbo.MovimientoTipo`:** Catálogo de 8 tipos (1: Scrap, 2: Retrabajo en Línea, 3: Calidad, 4: Cuarentena, 5: Calidad Reingreso, 6: metal Finish, 7: Traspaleo, 8: Impresión Parcial).
-2. **`dbo.EtiquetasCI`:** Catálogo de más de 58 razones técnicas con códigos industriales (5001 Arrugas, 5002 Barreno Dañado, 5010 Fisura, 5017 Pieza Dañada por Troquel, 4142 Óxido, etc.).
-3. **`dbo.Certificaciones`:** Estaciones certificadoras y celdas robotizadas (Prensas Transfer, Soldadura Robótica, Metal Finish, Laboratorio Metrológico CMM).
+`id`, `CertificacionId`, `MATNR`, `fecha_hora`, `credencial`, `MovimientoTipoId`, `cantidad`, `salida`, `retorno`, `EmpleadoId`, `Empleado`, `procesado`, `aprobado`, `RazonId`, `centro_costo`, `almacen`, `serial`, `MATNR_FG`, `nvAprobadoPor`, `dtAprobado`.
 
----
+Los significados de negocio de IDs y banderas deben confirmarse con el diccionario de datos/ingenieros de la base. La presencia de una columna en la respuesta no implica que tenga catálogo, descripción o interpretación funcional integrada.
 
-## 4. Archivo Exclusivo de Conexión y Adaptaciones del Sistema
+## Integración de frontend
 
-### 4.1 Archivo Exclusivo de Conexión: `database.connection.ts`
-Se implementó un módulo exclusivo y aislado para la conexión con Microsoft SQL Server en:
-```
-backend/src/config/database.connection.ts
-```
-**Características Principales:**
-- **Pool de Conexiones Optimizado (`mssql`):** Administra conexiones concurrentes con desconexión segura (`conectarSQLServer()`, `obtenerPool()`, `cerrarConexionSQLServer()`).
-- **Autodiagnóstico Integrado (`probarConexionSQLServer()`):** Verifica versión de motor SQL Server, conectividad hacia la base de datos `SCRAP_MES` y conteo de filas de `dbo.Movimientos`.
-- **Script Ejecutable Directo:** Permite probar la conexión en 1 segundo mediante el comando:
-  ```bash
-  npm run test:db
-  ```
-- **Soporte de Variables de Entorno:** Lee parámetros de `backend/.env` (`DB_SERVER`, `DB_PORT`, `DB_DATABASE`, `DB_USER`, `DB_PASSWORD`, `DB_ENCRYPT`, `DB_TRUST_SERVER_CERTIFICATE`).
+- `frontend/src/services/scrapService.ts`: obtiene los movimientos desde la API y transforma los campos que consume la interfaz; conserva la fila original en `datosDB`.
+- `frontend/src/context/ScrapContext.tsx`: carga los registros del año 2025 (rango predeterminado del API) y mantiene estado de carga/error y recarga. No presenta un fallback mock como si fueran movimientos SQL.
+- `frontend/src/pages/MovimientosPage.tsx`: presenta la lista consultada y sus filtros, con estados de carga/error. La columna de razón muestra `RazonId` junto con la descripción si está disponible en el catálogo local `RAZONES_SSMS`; cuando el ID no está en ese catálogo, indica que no hay descripción disponible.
+- `frontend/src/pages/MovimientoDetallePage.tsx`: presenta datos del movimiento y señala campos o acciones aún no integrados.
+- `frontend/src/pages/DashboardPage.tsx`: muestra únicamente los movimientos de 2025, sin selector de periodos. Gráficas, KPIs, movimientos recientes y CSV se basan en los registros cargados por el contexto. Costos/OEE no deben interpretarse como datos reales de la tabla y el alta manual no persiste en SQL.
+- `frontend/src/pages/AprobacionesPage.tsx`: consulta filas pendientes, muestra fecha/hora de emisión y permite abrir la confirmación de aprobación o rechazo. La confirmación exige un nombre, explica que el dictamen se guardará en SQL Server y presenta errores del API.
+- `frontend/src/pages/ReportesPage.tsx`: filtra por fechas, certificación y `RazonId`; presenta cantidades y agrupaciones por certificación y `MATNR`, usando `MATNR_FG` cuando está disponible. No calcula costos, líneas de producción ni turnos, ya que esos datos no se encuentran disponibles como tales en la tabla conectada.
+- Turno activo: se determina automáticamente a partir de la hora local del dispositivo y ya no puede seleccionarse manualmente. Turno 1: 06:00–14:00; turno 2: 14:00–22:00; turno 3: 22:00–06:00. La barra superior muestra el reloj local actualizado cada segundo y el turno se actualiza en los cambios de horario.
+- `frontend/src/utils/formatters.ts`: exporta CSV con las columnas originales de SQL.
+- `frontend/vite.config.ts`: configura el proxy `/api` hacia el backend local.
 
-### 4.2 Frontend Adaptado (`frontend/`)
-- **`src/types/index.ts`:** Tipado exhaustivo con `Movimiento`, `RazonCatalogo`, `MovimientoTipoCatalogo` y `CertificacionCatalogo`.
-- **`src/mock/data.ts`:** Registros maestros y datos iniciales ajustados al esquema relacional de SSMS con seriales, razones y estados de aprobación.
-- **`src/context/ScrapContext.tsx`:** Manejo reactivo de `aprobado = 1` (autorizado) y `aprobado = 2` (rechazado), actualizando `nvAprobadoPor` y `dtAprobado`.
-- **`src/pages/MovimientosPage.tsx`:** Tabla corporativa que exhibe `ID / Serial`, `MATNR`, `MATNR_FG`, `Razón # (EtiquetasCI)`, `Tipo Movimiento`, `Almacén` y `Aprobación`.
-- **`src/pages/MovimientoDetallePage.tsx`:** Tarjeta técnica con el mapeo detallado de las 20 columnas de `dbo.Movimientos` y marbete viajero físico con código de barras.
-- **`src/pages/AprobacionesPage.tsx`:** Mesa de dictamen que filtra folios pendientes (`aprobado = 0`) permitiendo autorizar o canalizar a retrabajo.
-- **`src/pages/MotivosPage.tsx`:** Doble vista (Grid de SQL Server Management Studio para `dbo.EtiquetasCI` y vista de tarjetas de severidad).
-- **`src/pages/ConfiguracionPage.tsx`:** Panel de arquitectura de base de datos con enlace y resumen de artefactos de la carpeta `BaseDeDatos/`.
+Los motivos se identifican por `RazonId`. La tabla de movimientos usa el catálogo local `RAZONES_SSMS` como referencia para mostrar descripciones conocidas, pero la carga en vivo de `dbo.EtiquetasCI` no está terminada; por ello, las descripciones locales deben validarse contra la base y no se deben tratar como sincronizadas. Los catálogos de certificaciones y tipos tampoco se consultan en vivo como tablas independientes.
 
-### 4.3 Backend Estructurado (`backend/`)
-- Módulo Node.js + Express + TypeScript con arquitectura limpia (`controllers/`, `repositories/`, `routes/`, `types/`).
-- Endpoints REST para `/api/movimientos`, `/api/movimientos/:id/aprobar`, `/api/movimientos/:id/rechazar`, `/api/catalogos/tipos`, `/api/catalogos/razones` y `/api/health`.
+## Reglas de alcance y pendientes
 
----
+Por solicitud actual, las vistas cargan solamente movimientos de 2025. El endpoint principal filtra `fecha_hora >= 2025-01-01 AND fecha_hora < 2026-01-01` directamente en SQL Server. Aunque la API conserva la opción de rango explícito para uso técnico, las páginas actuales consumen el rango predeterminado. Se respetan las notas entregadas en `Base de datos Estructura` sobre campos que deben ignorarse o dejarse pendientes. La API y la exportación conservan las columnas originales, pero la interfaz solo utiliza para sus métricas los datos integrados y disponibles. Consultar la estructura original antes de activar o asignar semántica a campos pendientes.
 
-## 5. Ejecución y Actualización Unificada con un Solo Comando
+Pendiente de implementación o validación con los ingenieros:
 
-Se configuró el entorno raíz para que toda la suite (backend + frontend) se actualice, compile y ejecute con un solo comando centralizado:
+1. Confirmar con responsables de planta que la fecha actual del servidor SQL y los límites de calendario coinciden con la zona horaria operativa.
+2. Alta de movimientos en SQL, aún no implementada.
+3. Autenticación y autorización de usuarios para que el nombre capturado corresponda a una identidad verificada y se limite quién puede aprobar o rechazar.
+4. Lectura en vivo de catálogos relacionados (`dbo.MovimientoTipo`, `dbo.EtiquetasCI`, `dbo.Certificaciones`) y definición validada de sus relaciones.
+5. Integración con SAP, transmisión de movimientos y confirmación de estado de proceso.
+6. Fuentes confiables para costos, metas, líneas, turnos, OEE y demás indicadores no demostrados por las columnas conectadas.
+7. Validación de permisos, manejo de carga de años completos, paginación y rendimiento con los responsables de SQL Server.
+8. Revisión funcional de cualquier dato mock que permanezca en módulos no conectados a la consulta de movimientos.
+9. Confirmar que el reloj del equipo que ejecuta el frontend esté configurado en la zona horaria local de la planta; el cálculo de turno se basa en ese reloj, no en una hora del servidor.
 
-```mermaid
-flowchart LR
-    RootCmd["npm run dev (o ./iniciar.ps1)"] --> BackendProc["[BACKEND] tsx watch :3001"]
-    RootCmd --> FrontendProc["[FRONTEND] vite :5173"]
-```
+No presentar como reales ni persistidos los datos de demostración que todavía aparezcan en módulos o catálogos locales.
 
-### Comandos Rápidos Disponibles:
+## Verificaciones realizadas
 
-| Comando | Acción Ejecutada |
-| :--- | :--- |
-| **`npm run dev`** | **Inicia simultáneamente el Backend (puerto 3001) y Frontend (puerto 5173) en tiempo real.** |
-| **`npm run build`** | Compila en un solo paso tanto el backend como el frontend de producción. |
-| **`npm run actualizar`** | Instala dependencias y compila ambos proyectos de principio a fin. |
-| **`npm run todo`** | Compila y arranca la suite completa en simultáneo. |
-| **`npm run test:db`** | **Ejecuta la prueba diagnóstica del archivo exclusivo de conexión a SQL Server.** |
-| **`.\iniciar.ps1`** o **`iniciar.bat`** | Lanzadores automáticos para Windows de doble clic. |
+En la máquina de desarrollo, el 23 de octubre de 2026:
 
----
+- `npm run test:db` había confirmado la conexión integrada de Windows a `SOE`.
+- `/api/health` reportó backend en línea y conexión a la base activa.
+- Antes de fijar el periodo, `GET /api/movimientos` devolvió 57,349 filas históricas; esa cifra corresponde a la validación anterior y ya no describe el rango predeterminado.
+- Se verificó la presencia de las 20 columnas originales y un campo calculado adicional en la respuesta API.
+- El filtro `tipoId=1` devolvió 18,614 filas en la prueba.
+- Se verificó la consulta de detalle por ID.
+- `npm run build` completó con éxito para backend y frontend tras adaptar Reportes.
+- El lint dirigido a `ReportesPage.tsx` y `AprobacionesPage.tsx` completó sin advertencias.
+- Para la API de dictamen se probaron solicitudes inválidas (ID, decisión o nombre incorrectos); respondieron HTTP 400 antes de ejecutar SQL. No se envió ninguna solicitud de aprobación/rechazo válida ni se modificaron filas reales.
+- Con el filtro predeterminado de 2025 activo, `GET /api/movimientos` devolvió 35,068 filas; se comprobó que ninguna fila queda fuera del rango 2025-01-01 inclusive a 2026-01-01 exclusivo.
+- `npm run build`, el lint dirigido de `DashboardPage.tsx` y `scrapService.ts`, y `git diff --check` pasaron después de fijar todas las vistas al año 2025.
+- La compilación final (`npm run build`), el lint dirigido de `AprobacionesPage.tsx` y `scrapService.ts`, y `git diff --check` finalizaron correctamente; Git mostró avisos de conversión de finales de línea LF/CRLF.
+- El backend de validación iniciado en segundo plano se detuvo al terminar las pruebas.
 
-## 6. Verificación y Resultados de Compilación
+Los conteos anteriores son una evidencia puntual de la instancia de desarrollo, no valores fijos ni garantía de disponibilidad futura. No se probó en este paso una instalación limpia en otro equipo. La actualización de dictamen se compila y valida en código, pero no se ejecuta contra la base durante estas pruebas para evitar cambiar registros reales.
 
-Ambos componentes del proyecto compilan con cero advertencias:
-- **Build Unificado (`npm run build`):** Compilación en menos de 1 segundo de backend y frontend.
-- **Frontend (Vite + React 19 + TypeScript):** Compilado en **536 ms** (`dist/assets/index-*.js`, gzip: 274 kB).
-- **Backend (TypeScript TSC):** Compilación limpia sin errores en `dist/`.
-- **Diagnóstico de Conexión (`npm run test:db`):** Verificación activa del módulo exclusivo de conexión hacia la base de datos SQL Server.
+## Guía para mantener esta memoria
 
----
-
-## 7. Conclusión
-
-El proyecto ha cumplido rigurosamente todos los requerimientos solicitados:
-1. Análisis y actualización integral de `memoria.md`.
-2. Adaptación íntegra de la aplicación a la tabla `dbo.Movimientos` y sus catálogos relacionales.
-3. Resguardo de todos los artefactos de base de datos en la carpeta oficial **`BaseDeDatos/`**.
-4. Creación de un **archivo exclusivo para la conexión** (`backend/src/config/database.connection.ts`) con prueba diagnóstica lista para activarse con `npm run test:db`.
-5. Orquestación para **actualizar y correr todo el proyecto con un solo comando** (`npm run dev` o `.\iniciar.ps1`).
+Actualizar este archivo cuando cambien rutas, conexión, columnas, validaciones o alcance. Distinguir expresamente lo probado de lo pendiente; evitar describir mocks como integración real y no copiar credenciales, datos personales ni filas de producción aquí.

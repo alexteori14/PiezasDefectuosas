@@ -4,8 +4,6 @@ import {
   Search,
   ArrowUpDown,
   Eye,
-  Check,
-  X,
   FileSpreadsheet,
   RotateCcw,
   Database,
@@ -15,21 +13,23 @@ import { useScrap } from '../context/ScrapContext';
 import { Badge } from '../components/common/Badge';
 import { Pagination } from '../components/common/Pagination';
 import { descargarCSV } from '../utils/formatters';
-import { CATEGORIAS_MOTIVOS, LINEAS_PRODUCCION } from '../constants';
+import { CATEGORIAS_MOTIVOS } from '../constants';
 
 type CampoOrden = 'id' | 'fecha' | 'matnr' | 'cantidad' | 'estatus' | 'linea' | 'serial' | 'razonId';
 
 export const MovimientosPage: React.FC = () => {
-  const { movimientos, razonesCatalogo, aprobarMovimiento, rechazarMovimiento } = useScrap();
+  const { movimientos, razonesCatalogo, movimientosCargando, errorMovimientos, recargarMovimientos } = useScrap();
   const navigate = useNavigate();
+  const descripcionPorRazon = useMemo(
+    () => new Map(razonesCatalogo.map((razon) => [razon.idRazon, razon.descripcion])),
+    [razonesCatalogo],
+  );
 
   // Estados de filtros y búsqueda
   const [busqueda, setBusqueda] = useState('');
-  const [filtroLinea, setFiltroLinea] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
   const [filtroRazon, setFiltroRazon] = useState('');
-  const [filtroTurno, setFiltroTurno] = useState('');
 
   // Ordenamiento
   const [ordenCampo, setOrdenCampo] = useState<CampoOrden>('id');
@@ -49,22 +49,17 @@ export const MovimientosPage: React.FC = () => {
         (m.serial && m.serial.toLowerCase().includes(q)) ||
         m.matnr.toLowerCase().includes(q) ||
         (m.matnrFg && m.matnrFg.toLowerCase().includes(q)) ||
-        m.descripcion.toLowerCase().includes(q) ||
-        m.empleado.toLowerCase().includes(q) ||
         m.credencial.toLowerCase().includes(q) ||
-        (m.motivoEspecifico && m.motivoEspecifico.toLowerCase().includes(q)) ||
-        (m.razonId && m.razonId.toString().includes(q)) ||
-        m.linea.toLowerCase().includes(q);
+        (m.razonId !== null && m.razonId.toString().includes(q)) ||
+        m.certificacionId.toString().includes(q);
 
-      const coincideLinea = filtroLinea === '' || m.linea.includes(filtroLinea);
       const coincideEstatus = filtroEstatus === '' || m.estatus === filtroEstatus;
       const coincideTipo = filtroTipo === '' || m.movimientoTipo === filtroTipo;
-      const coincideRazon = filtroRazon === '' || (m.razonId && m.razonId.toString() === filtroRazon);
-      const coincideTurno = filtroTurno === '' || m.turno === filtroTurno;
+      const coincideRazon = filtroRazon === '' || m.razonId?.toString() === filtroRazon;
 
-      return coincideBusqueda && coincideLinea && coincideEstatus && coincideTipo && coincideRazon && coincideTurno;
+      return coincideBusqueda && coincideEstatus && coincideTipo && coincideRazon;
     });
-  }, [movimientos, busqueda, filtroLinea, filtroEstatus, filtroTipo, filtroRazon, filtroTurno]);
+  }, [movimientos, busqueda, filtroEstatus, filtroTipo, filtroRazon]);
 
   // Ordenar resultados
   const movimientosOrdenados = useMemo(() => {
@@ -105,11 +100,9 @@ export const MovimientosPage: React.FC = () => {
 
   const limpiarFiltros = () => {
     setBusqueda('');
-    setFiltroLinea('');
     setFiltroEstatus('');
     setFiltroTipo('');
     setFiltroRazon('');
-    setFiltroTurno('');
     setPaginaActual(1);
   };
 
@@ -128,7 +121,7 @@ export const MovimientosPage: React.FC = () => {
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Registro unificado de piezas no conformes, scrap y retrabajos con serial de marbete y trazabilidad IATF 16949.
+            Lectura de registros desde SQL Server, tabla <code>dbo.Movimientos</code>. Los campos pendientes se muestran como no integrados.
           </p>
         </div>
 
@@ -147,6 +140,13 @@ export const MovimientosPage: React.FC = () => {
 
       {/* Barra de Filtros y Búsqueda */}
       <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+        {errorMovimientos && (
+          <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+            <span>No fue posible cargar movimientos: {errorMovimientos}</span>
+            <button onClick={recargarMovimientos} className="font-semibold underline">Reintentar</button>
+          </div>
+        )}
+        {movimientosCargando && <p className="text-xs text-slate-500">Consultando dbo.Movimientos…</p>}
         <div className="flex flex-col md:flex-row gap-3">
           {/* Buscador General */}
           <div className="relative flex-1">
@@ -158,30 +158,13 @@ export const MovimientosPage: React.FC = () => {
                 setBusqueda(e.target.value);
                 setPaginaActual(1);
               }}
-              placeholder="Buscar por Folio Serial, MATNR, MATNR_FG, Razón o Empleado..."
+              placeholder="Buscar por ID, Serial, MATNR, credencial o certificación..."
               className="w-full pl-9 pr-4 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
           {/* Filtros Dropdown */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-            {/* Filtro Línea */}
-            <select
-              value={filtroLinea}
-              onChange={(e) => {
-                setFiltroLinea(e.target.value);
-                setPaginaActual(1);
-              }}
-              className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              <option value="">Todas las Líneas</option>
-              {LINEAS_PRODUCCION.map((l) => (
-                <option key={l.id} value={l.codigo}>
-                  {l.codigo}
-                </option>
-              ))}
-            </select>
-
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {/* Filtro Estatus / Aprobado */}
             <select
               value={filtroEstatus}
@@ -195,7 +178,6 @@ export const MovimientosPage: React.FC = () => {
               <option value="Pendiente">Pendiente (aprobado = 0)</option>
               <option value="Aprobado">Aprobado (aprobado = 1)</option>
               <option value="Rechazado">Rechazado (aprobado = 2)</option>
-              <option value="En Cuarentena">En Cuarentena</option>
             </select>
 
             {/* Filtro Tipo de Movimiento */}
@@ -225,9 +207,9 @@ export const MovimientosPage: React.FC = () => {
               className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Razón (EtiquetasCI)</option>
-              {razonesCatalogo.slice(0, 15).map((r) => (
-                <option key={r.idRazon} value={r.idRazon.toString()}>
-                  {r.idRazon} - {r.descripcion}
+              {[...new Set(movimientos.map((movimiento) => movimiento.razonId).filter((id): id is number => id !== null))].map((idRazon) => (
+                <option key={idRazon} value={idRazon.toString()}>
+                  {idRazon}
                 </option>
               ))}
             </select>
@@ -291,7 +273,7 @@ export const MovimientosPage: React.FC = () => {
                   </div>
                 </th>
                 <th className="px-4 py-3">Almacén</th>
-                <th className="px-4 py-3">Empleado</th>
+                <th className="px-4 py-3">CertificacionId</th>
                 <th
                   onClick={() => alternarOrden('estatus')}
                   className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
@@ -306,7 +288,11 @@ export const MovimientosPage: React.FC = () => {
             </thead>
 
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal">
-              {movimientosPaginados.length === 0 ? (
+              {movimientosCargando ? (
+                <tr><td colSpan={11} className="px-4 py-10 text-center text-slate-500">Cargando movimientos de SQL Server…</td></tr>
+              ) : errorMovimientos ? (
+                <tr><td colSpan={11} className="px-4 py-10 text-center text-rose-600">No se pudieron leer los registros de la base de datos.</td></tr>
+              ) : movimientosPaginados.length === 0 ? (
                 <tr>
                   <td colSpan={11} className="px-4 py-10 text-center text-slate-500">
                     No se encontraron movimientos registrados en dbo.Movimientos con los filtros aplicados.
@@ -326,7 +312,7 @@ export const MovimientosPage: React.FC = () => {
                       >
                         <span>#{mov.id}</span>
                         <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
-                          {mov.serial}
+                          {mov.serial || '—'}
                         </span>
                       </button>
                     </td>
@@ -337,7 +323,7 @@ export const MovimientosPage: React.FC = () => {
                         {mov.matnr}
                       </div>
                       <div className="text-[11px] text-slate-400 max-w-[150px] truncate">
-                        {mov.descripcion}
+                        {mov.certificacionId ? `Certificación ${mov.certificacionId}` : '—'}
                       </div>
                       {mov.matnrFg && (
                         <span className="inline-block text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
@@ -349,7 +335,7 @@ export const MovimientosPage: React.FC = () => {
                     {/* Fecha y Hora */}
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       <div>{mov.fecha}</div>
-                      <div className="text-[10px] text-slate-400">{mov.hora} • {mov.turno}</div>
+                      <div className="text-[10px] text-slate-400">{mov.hora}</div>
                     </td>
 
                     {/* Credencial */}
@@ -372,7 +358,9 @@ export const MovimientosPage: React.FC = () => {
                           {mov.razonId}
                         </span>
                         <span className="text-slate-500 dark:text-slate-400 truncate max-w-[130px]">
-                          {mov.motivoEspecifico}
+                          {mov.razonId === null
+                            ? 'Sin razón'
+                            : descripcionPorRazon.get(mov.razonId) || 'Descripción no disponible'}
                         </span>
                       </div>
                     </td>
@@ -389,9 +377,9 @@ export const MovimientosPage: React.FC = () => {
                       </span>
                     </td>
 
-                    {/* Empleado */}
-                    <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                      <div className="truncate max-w-[120px]">{mov.empleado}</div>
+                    {/* Empleado está pendiente según las instrucciones de la base */}
+                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
+                      Pendiente
                     </td>
 
                     {/* Estatus / Aprobado */}
@@ -415,24 +403,6 @@ export const MovimientosPage: React.FC = () => {
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {mov.aprobado === 0 && (
-                          <>
-                            <button
-                              onClick={() => aprobarMovimiento(mov.id)}
-                              className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors"
-                              title="Aprobar Movimiento (aprobado = 1)"
-                            >
-                              <Check className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => rechazarMovimiento(mov.id)}
-                              className="p-1 rounded text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-                              title="Rechazar Movimiento (aprobado = 2)"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
                       </div>
                     </td>
                   </tr>

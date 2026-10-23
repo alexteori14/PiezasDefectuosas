@@ -4,109 +4,96 @@ import { MovimientosRepository } from '../repositories/movimientosRepository.js'
 const repo = new MovimientosRepository();
 
 export async function getMovimientos(req: Request, res: Response) {
+  const fechaInicio = typeof req.query.fechaInicio === 'string' ? req.query.fechaInicio : undefined;
+  const fechaFin = typeof req.query.fechaFin === 'string' ? req.query.fechaFin : undefined;
+  const formatoFechaValido = (fecha: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return false;
+    const parsed = new Date(`${fecha}T00:00:00.000Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === fecha;
+  };
+
+  if ((fechaInicio && !fechaFin) || (!fechaInicio && fechaFin)
+    || (fechaInicio && fechaFin
+      && (!formatoFechaValido(fechaInicio) || !formatoFechaValido(fechaFin) || fechaInicio >= fechaFin))) {
+    res.status(400).json({
+      exitoso: false,
+      mensaje: 'El rango de fechas requiere fechaInicio y fechaFin válidas, en formato YYYY-MM-DD, con fechaFin posterior.',
+    });
+    return;
+  }
+
   try {
     const filtros = {
       tipoId: req.query.tipoId as string | undefined,
       aprobado: req.query.aprobado as string | undefined,
       razonId: req.query.razonId as string | undefined,
       busqueda: req.query.busqueda as string | undefined,
+      fechaInicio,
+      fechaFin,
     };
     const lista = await repo.listar(filtros);
     res.json({ exitoso: true, datos: lista, conteo: lista.length });
-  } catch (error: any) {
-    res.status(500).json({ exitoso: false, mensaje: error.message || 'Error al obtener movimientos' });
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error al obtener movimientos.';
+    res.status(500).json({ exitoso: false, mensaje });
   }
 }
 
 export async function getMovimientoById(req: Request, res: Response) {
+  const id = Number.parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });
+    return;
+  }
+
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
-      return res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido' });
+    const movimiento = await repo.obtenerPorId(id);
+    if (!movimiento) {
+      res.status(404).json({ exitoso: false, mensaje: 'Movimiento no encontrado.' });
+      return;
     }
-    const item = await repo.obtenerPorId(id);
-    if (!item) {
-      return res.status(404).json({ exitoso: false, mensaje: 'Movimiento no encontrado' });
-    }
-    res.json({ exitoso: true, datos: item });
-  } catch (error: any) {
-    res.status(500).json({ exitoso: false, mensaje: error.message || 'Error al obtener movimiento' });
+    res.json({ exitoso: true, datos: movimiento });
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error al obtener movimiento.';
+    res.status(500).json({ exitoso: false, mensaje });
   }
 }
 
-export async function createMovimiento(req: Request, res: Response) {
-  try {
-    const {
-      CertificacionId,
-      MATNR,
-      credencial,
-      MovimientoTipoId,
-      cantidad,
-      Empleado,
-      RazonId,
-      almacen,
-      MATNR_FG,
-      centro_costo,
-    } = req.body;
+export async function registrarDictamen(req: Request, res: Response) {
+  if (!/^[1-9]\d*$/.test(req.params.id)) {
+    res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });
+    return;
+  }
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id)) {
+    res.status(400).json({ exitoso: false, mensaje: 'ID de movimiento inválido.' });
+    return;
+  }
 
-    if (!MATNR || !credencial || !MovimientoTipoId || !cantidad) {
-      return res.status(400).json({
-        exitoso: false,
-        mensaje: 'Faltan campos obligatorios: MATNR, credencial, MovimientoTipoId y cantidad son requeridos.',
-      });
-    }
-
-    const nuevo = await repo.crear({
-      CertificacionId: CertificacionId ? parseInt(CertificacionId, 10) : 101,
-      MATNR,
-      fecha_hora: new Date(),
-      credencial,
-      MovimientoTipoId: parseInt(MovimientoTipoId, 10),
-      cantidad: parseInt(cantidad, 10),
-      salida: true,
-      retorno: false,
-      EmpleadoId: credencial,
-      Empleado: Empleado || 'Operador en Línea',
-      procesado: 0,
-      aprobado: 0,
-      RazonId: RazonId ? parseInt(RazonId, 10) : 5001,
-      centro_costo: centro_costo || 'CC-PLANTA',
-      almacen: almacen || 'ALM-99',
-      serial: req.body.serial,
-      MATNR_FG: MATNR_FG || null,
+  const aprobado = req.body?.aprobado;
+  const aprobadoPor = typeof req.body?.aprobadoPor === 'string' ? req.body.aprobadoPor.trim() : '';
+  if ((aprobado !== 1 && aprobado !== 2) || aprobadoPor.length === 0 || aprobadoPor.length > 200) {
+    res.status(400).json({
+      exitoso: false,
+      mensaje: 'Indica si apruebas o rechazas y captura el nombre del responsable (máximo 200 caracteres).',
     });
-
-    res.status(201).json({ exitoso: true, datos: nuevo, mensaje: 'Movimiento registrado correctamente en base de datos.' });
-  } catch (error: any) {
-    res.status(500).json({ exitoso: false, mensaje: error.message || 'Error al crear movimiento' });
+    return;
   }
-}
 
-export async function aprobarMovimiento(req: Request, res: Response) {
   try {
-    const id = parseInt(req.params.id, 10);
-    const aprobadoPor = req.body.aprobadoPor || 'Supervisor de Calidad';
-    const exito = await repo.aprobar(id, aprobadoPor);
-    if (!exito) {
-      return res.status(404).json({ exitoso: false, mensaje: 'Movimiento no encontrado para aprobación' });
+    const resultado = await repo.registrarDictamen(id, aprobado, aprobadoPor);
+    if (resultado.estado === 'no-encontrado') {
+      res.status(404).json({ exitoso: false, mensaje: 'Movimiento no encontrado.' });
+      return;
     }
-    res.json({ exitoso: true, mensaje: `Movimiento #${id} aprobado satisfactoriamente.` });
-  } catch (error: any) {
-    res.status(500).json({ exitoso: false, mensaje: error.message || 'Error al aprobar movimiento' });
-  }
-}
-
-export async function rechazarMovimiento(req: Request, res: Response) {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const rechazadoPor = req.body.rechazadoPor || 'Supervisor de Calidad';
-    const exito = await repo.rechazar(id, rechazadoPor);
-    if (!exito) {
-      return res.status(404).json({ exitoso: false, mensaje: 'Movimiento no encontrado para rechazo' });
+    if (resultado.estado === 'ya-dictaminado') {
+      res.status(409).json({ exitoso: false, mensaje: 'El movimiento ya fue dictaminado y no se modificó.' });
+      return;
     }
-    res.json({ exitoso: true, mensaje: `Movimiento #${id} rechazado satisfactoriamente.` });
-  } catch (error: any) {
-    res.status(500).json({ exitoso: false, mensaje: error.message || 'Error al rechazar movimiento' });
+    res.json({ exitoso: true, datos: resultado.movimiento });
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error al registrar el dictamen.';
+    res.status(500).json({ exitoso: false, mensaje });
   }
 }
 
@@ -114,7 +101,8 @@ export async function getKPIs(_req: Request, res: Response) {
   try {
     const kpis = await repo.obtenerKPIs();
     res.json({ exitoso: true, datos: kpis });
-  } catch (error: any) {
-    res.status(500).json({ exitoso: false, mensaje: error.message || 'Error al calcular KPIs' });
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error al calcular indicadores.';
+    res.status(500).json({ exitoso: false, mensaje });
   }
 }

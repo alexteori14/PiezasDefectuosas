@@ -1,76 +1,75 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  CheckCircle,
-  XCircle,
   Eye,
-  ShieldCheck,
   Filter,
-  CheckCheck,
   FileCheck2,
   Database,
   Tag,
+  Check,
+  X,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import type { Movimiento } from '../types';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
-import { formatearMoneda } from '../utils/formatters';
-import { LINEAS_PRODUCCION } from '../constants';
 
 export const AprobacionesPage: React.FC = () => {
-  const { movimientos, aprobarMovimiento, rechazarMovimiento } = useScrap();
+  const { movimientos, razonesCatalogo, aprobarMovimiento, rechazarMovimiento } = useScrap();
   const navigate = useNavigate();
+  const descripcionPorRazon = useMemo(
+    () => new Map(razonesCatalogo.map((razon) => [razon.idRazon, razon.descripcion])),
+    [razonesCatalogo],
+  );
 
-  const [filtroLinea, setFiltroLinea] = useState('');
-  const [modalAprobar, setModalAprobar] = useState<Movimiento | null>(null);
-  const [modalRechazar, setModalRechazar] = useState<Movimiento | null>(null);
+  const [filtroCertificacion, setFiltroCertificacion] = useState('');
   const [modalDetalle, setModalDetalle] = useState<Movimiento | null>(null);
+  const [dictamenObjetivo, setDictamenObjetivo] = useState<{ movimiento: Movimiento; decision: 1 | 2 } | null>(null);
+  const [nombreResponsable, setNombreResponsable] = useState('');
+  const [dictamenEnviando, setDictamenEnviando] = useState(false);
+  const [errorDictamen, setErrorDictamen] = useState<string | null>(null);
 
-  const [comentarios, setComentarios] = useState('');
-  const [seleccionados, setSeleccionados] = useState<string[]>([]);
-
-  // Filtrar solo los movimientos pendientes (aprobado = 0 o estatus Pendiente)
   const pendientes = movimientos.filter((m) => {
     const esPendiente = m.aprobado === 0 || m.estatus === 'Pendiente';
-    const coincideLinea = filtroLinea === '' || m.linea.includes(filtroLinea);
-    return esPendiente && coincideLinea;
+    const coincideCertificacion = filtroCertificacion === '' || String(m.certificacionId) === filtroCertificacion;
+    return esPendiente && coincideCertificacion;
   });
 
-  const handleConfirmarAprobacion = () => {
-    if (modalAprobar) {
-      aprobarMovimiento(modalAprobar.id, comentarios || 'Aprobado conforme a auditoría de scrap');
-      setModalAprobar(null);
-      setComentarios('');
+  const abrirConfirmacionDictamen = (movimiento: Movimiento, decision: 1 | 2) => {
+    setDictamenObjetivo({ movimiento, decision });
+    setNombreResponsable('');
+    setErrorDictamen(null);
+  };
+
+  const cerrarConfirmacionDictamen = () => {
+    if (dictamenEnviando) return;
+    setDictamenObjetivo(null);
+    setErrorDictamen(null);
+  };
+
+  const confirmarDictamen = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!dictamenObjetivo) return;
+
+    const responsable = nombreResponsable.trim();
+    if (!responsable) {
+      setErrorDictamen('Captura el nombre del responsable para continuar.');
+      return;
     }
-  };
 
-  const handleConfirmarRechazo = () => {
-    if (modalRechazar) {
-      rechazarMovimiento(modalRechazar.id, comentarios || 'Rechazado por posibilidad de retrabajo o error');
-      setModalRechazar(null);
-      setComentarios('');
-    }
-  };
-
-  const handleAprobarTodosSeleccionados = () => {
-    seleccionados.forEach((id) => {
-      aprobarMovimiento(id, 'Aprobación masiva por supervisor de turno');
-    });
-    setSeleccionados([]);
-  };
-
-  const alternarSeleccion = (id: string) => {
-    setSeleccionados((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
-  };
-
-  const alternarSeleccionarTodos = () => {
-    if (seleccionados.length === pendientes.length) {
-      setSeleccionados([]);
-    } else {
-      setSeleccionados(pendientes.map((p) => p.id));
+    setDictamenEnviando(true);
+    setErrorDictamen(null);
+    try {
+      if (dictamenObjetivo.decision === 1) {
+        await aprobarMovimiento(dictamenObjetivo.movimiento.id, responsable);
+      } else {
+        await rechazarMovimiento(dictamenObjetivo.movimiento.id, responsable);
+      }
+      setDictamenObjetivo(null);
+    } catch (error) {
+      setErrorDictamen(error instanceof Error ? error.message : 'No se pudo guardar el dictamen.');
+    } finally {
+      setDictamenEnviando(false);
     }
   };
 
@@ -94,35 +93,25 @@ export const AprobacionesPage: React.FC = () => {
         </div>
 
         {/* Acciones Globales */}
-        {seleccionados.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="success"
-              size="sm"
-              icon={<CheckCheck className="w-4 h-4" />}
-              onClick={handleAprobarTodosSeleccionados}
-            >
-              Aprobar Seleccionados ({seleccionados.length})
-            </Button>
-          </div>
-        )}
+      </div>
+
+      <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+        Los dictámenes se guardan en SQL Server: se registra el nombre capturado en <code>nvAprobadoPor</code> y la fecha/hora del servidor en <code>dtAprobado</code>. El nombre capturado no verifica por sí mismo la identidad del usuario.
       </div>
 
       {/* Barra de Filtro de Línea */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div className="flex items-center gap-2 text-xs">
           <Filter className="w-4 h-4 text-slate-400" />
-          <span className="font-semibold text-slate-700 dark:text-slate-300">Filtrar por Línea:</span>
+          <span className="font-semibold text-slate-700 dark:text-slate-300">Filtrar por Certificación:</span>
           <select
-            value={filtroLinea}
-            onChange={(e) => setFiltroLinea(e.target.value)}
+            value={filtroCertificacion}
+            onChange={(e) => setFiltroCertificacion(e.target.value)}
             className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
-            <option value="">Todas las Líneas de Planta</option>
-            {LINEAS_PRODUCCION.map((l) => (
-              <option key={l.id} value={l.codigo}>
-                {l.nombre}
-              </option>
+            <option value="">Todas las certificaciones</option>
+            {[...new Set(movimientos.map((movimiento) => movimiento.certificacionId))].map((id) => (
+              <option key={id} value={String(id)}>Certificación {id}</option>
             ))}
           </select>
         </div>
@@ -138,21 +127,14 @@ export const AprobacionesPage: React.FC = () => {
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200 dark:border-slate-800">
               <tr>
-                <th className="px-4 py-3 w-8">
-                  <input
-                    type="checkbox"
-                    checked={pendientes.length > 0 && seleccionados.length === pendientes.length}
-                    onChange={alternarSeleccionarTodos}
-                    className="rounded text-blue-600 focus:ring-blue-500"
-                  />
-                </th>
                 <th className="px-4 py-3">ID / Serial</th>
                 <th className="px-4 py-3">Número de Parte (MATNR)</th>
+                <th className="px-4 py-3">Fecha de emisión</th>
                 <th className="px-4 py-3">Razón de Falla</th>
                 <th className="px-4 py-3">Tipo Movimiento</th>
                 <th className="px-4 py-3 text-right">Cantidad</th>
                 <th className="px-4 py-3">Almacén</th>
-                <th className="px-4 py-3">Reporta</th>
+                <th className="px-4 py-3">Credencial</th>
                 <th className="px-4 py-3 text-center">Acciones</th>
               </tr>
             </thead>
@@ -176,19 +158,8 @@ export const AprobacionesPage: React.FC = () => {
                 pendientes.map((item) => (
                   <tr
                     key={item.id}
-                    className={`hover:bg-amber-50/30 dark:hover:bg-slate-800/40 transition-colors ${
-                      seleccionados.includes(item.id) ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''
-                    }`}
+                    className="hover:bg-amber-50/30 dark:hover:bg-slate-800/40 transition-colors"
                   >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={seleccionados.includes(item.id)}
-                        onChange={() => alternarSeleccion(item.id)}
-                        className="rounded text-blue-600 focus:ring-blue-500"
-                      />
-                    </td>
-
                     {/* ID y Serial */}
                     <td className="px-4 py-3 font-mono">
                       <div className="font-bold text-blue-600 dark:text-blue-400">#{item.id}</div>
@@ -208,6 +179,12 @@ export const AprobacionesPage: React.FC = () => {
                       )}
                     </td>
 
+                    {/* Fecha y hora de emisión desde fecha_hora */}
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                      <div>{item.fecha}</div>
+                      <div className="text-[10px] text-slate-400">{item.hora}</div>
+                    </td>
+
                     {/* Razón */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-1.5">
@@ -216,7 +193,9 @@ export const AprobacionesPage: React.FC = () => {
                           {item.razonId}
                         </span>
                         <span className="text-slate-600 dark:text-slate-300 max-w-[160px] truncate">
-                          {item.motivoEspecifico}
+                          {item.razonId === null
+                            ? 'Sin razón'
+                            : descripcionPorRazon.get(item.razonId) || 'Descripción no disponible'}
                         </span>
                       </div>
                     </td>
@@ -242,39 +221,13 @@ export const AprobacionesPage: React.FC = () => {
 
                     {/* Reporta */}
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      <div className="font-medium">{item.empleado}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">{item.credencial}</div>
+                      <div className="font-mono">{item.credencial}</div>
+                      <div className="text-[10px] text-slate-400">Empleado pendiente de integración</div>
                     </td>
 
                     {/* Acciones */}
                     <td className="px-4 py-3 text-center">
                       <div className="flex items-center justify-center gap-2">
-                        {/* Aprobar */}
-                        <Button
-                          variant="success"
-                          size="sm"
-                          icon={<CheckCircle className="w-3.5 h-3.5" />}
-                          onClick={() => {
-                            setModalAprobar(item);
-                            setComentarios('Aprobado conforme a auditoría de scrap para disposición final en ALM-99.');
-                          }}
-                        >
-                          Aprobar
-                        </Button>
-
-                        {/* Rechazar */}
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          icon={<XCircle className="w-3.5 h-3.5" />}
-                          onClick={() => {
-                            setModalRechazar(item);
-                            setComentarios('Rechazado: Material califica para retrabajo en línea en ALM-12.');
-                          }}
-                        >
-                          Rechazar
-                        </Button>
-
                         {/* Ver Detalle */}
                         <Button
                           variant="outline"
@@ -283,6 +236,22 @@ export const AprobacionesPage: React.FC = () => {
                           onClick={() => setModalDetalle(item)}
                         >
                           Detalle
+                        </Button>
+                        <Button
+                          variant="success"
+                          size="sm"
+                          icon={<Check className="w-3.5 h-3.5" />}
+                          onClick={() => abrirConfirmacionDictamen(item, 1)}
+                        >
+                          Aprobar
+                        </Button>
+                        <Button
+                          variant="danger"
+                          size="sm"
+                          icon={<X className="w-3.5 h-3.5" />}
+                          onClick={() => abrirConfirmacionDictamen(item, 2)}
+                        >
+                          Rechazar
                         </Button>
                       </div>
                     </td>
@@ -293,105 +262,6 @@ export const AprobacionesPage: React.FC = () => {
           </table>
         </div>
       </div>
-
-      {/* MODAL DE CONFIRMACIÓN: APROBAR (aprobado = 1) */}
-      <Modal
-        isOpen={!!modalAprobar}
-        onClose={() => setModalAprobar(null)}
-        title="Confirmar Aprobación (aprobado = 1)"
-        subtitle={`Folio #${modalAprobar?.id} • Serial ${modalAprobar?.serial}`}
-        maxWidth="md"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setModalAprobar(null)}>
-              Cancelar
-            </Button>
-            <Button variant="success" icon={<CheckCircle className="w-4 h-4" />} onClick={handleConfirmarAprobacion}>
-              Autorizar y Firmar (aprobado = 1)
-            </Button>
-          </>
-        }
-      >
-        {modalAprobar && (
-          <div className="space-y-4 text-xs">
-            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl flex items-start gap-3">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-emerald-900 dark:text-emerald-200">
-                  Actualización en tabla dbo.Movimientos
-                </p>
-                <p className="text-emerald-700 dark:text-emerald-300 mt-0.5">
-                  Se actualizará <strong className="font-mono">aprobado = 1</strong> y{' '}
-                  <strong className="font-mono">nvAprobadoPor = 'Ing. Carlos Mendoza'</strong> para{' '}
-                  <strong className="font-mono">{modalAprobar.cantidad} {modalAprobar.unidad}</strong>{' '}
-                  (Costo: {formatearMoneda(modalAprobar.costoTotal)}).
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Comentarios de Aprobación / Instrucción para Disposición
-              </label>
-              <textarea
-                rows={3}
-                value={comentarios}
-                onChange={(e) => setComentarios(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                placeholder="Indique condiciones de entrega al patio de chatarra..."
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
-
-      {/* MODAL DE CONFIRMACIÓN: RECHAZAR (aprobado = 2) */}
-      <Modal
-        isOpen={!!modalRechazar}
-        onClose={() => setModalRechazar(null)}
-        title="Rechazar Solicitud de Scrap (aprobado = 2)"
-        subtitle={`Folio #${modalRechazar?.id} • Serial ${modalRechazar?.serial}`}
-        maxWidth="md"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setModalRechazar(null)}>
-              Cancelar
-            </Button>
-            <Button variant="danger" icon={<XCircle className="w-4 h-4" />} onClick={handleConfirmarRechazo}>
-              Confirmar Rechazo (aprobado = 2)
-            </Button>
-          </>
-        }
-      >
-        {modalRechazar && (
-          <div className="space-y-4 text-xs">
-            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl flex items-start gap-3">
-              <XCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold text-rose-900 dark:text-rose-200">
-                  Desvío a Retrabajo Técnico
-                </p>
-                <p className="text-rose-700 dark:text-rose-300 mt-0.5">
-                  El registro se marcará con <strong className="font-mono">aprobado = 2</strong> y será transferido al almacén de retrabajo <strong className="font-mono">ALM-12</strong>.
-                </p>
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                Justificación Técnica de Rechazo
-              </label>
-              <textarea
-                rows={3}
-                value={comentarios}
-                onChange={(e) => setComentarios(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500 focus:outline-none"
-                placeholder="Indique por qué la pieza es recuperable..."
-              />
-            </div>
-          </div>
-        )}
-      </Modal>
 
       {/* MODAL DETALLE RÁPIDO */}
       <Modal
@@ -417,7 +287,9 @@ export const AprobacionesPage: React.FC = () => {
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
                 <span className="text-[10px] text-slate-400 block">Razón (EtiquetasCI)</span>
                 <span className="font-bold text-amber-600 dark:text-amber-400">
-                  {modalDetalle.razonId} - {modalDetalle.motivoEspecifico}
+                  {modalDetalle.razonId === null
+                    ? 'Sin razón'
+                    : `${modalDetalle.razonId} - ${descripcionPorRazon.get(modalDetalle.razonId) || 'Descripción no disponible'}`}
                 </span>
               </div>
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
@@ -428,12 +300,6 @@ export const AprobacionesPage: React.FC = () => {
                 <span className="text-[10px] text-slate-400 block">Cantidad</span>
                 <span className="font-bold text-slate-800 dark:text-slate-200">
                   {modalDetalle.cantidad} {modalDetalle.unidad}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
-                <span className="text-[10px] text-slate-400 block">Costo Total Estimado</span>
-                <span className="font-bold text-rose-600 dark:text-rose-400">
-                  {formatearMoneda(modalDetalle.costoTotal)}
                 </span>
               </div>
             </div>
@@ -454,6 +320,60 @@ export const AprobacionesPage: React.FC = () => {
               </Button>
             </div>
           </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={!!dictamenObjetivo}
+        onClose={cerrarConfirmacionDictamen}
+        title={dictamenObjetivo?.decision === 1 ? 'Confirmar aprobación' : 'Confirmar rechazo'}
+        subtitle={`Movimiento #${dictamenObjetivo?.movimiento.id} · ${dictamenObjetivo?.movimiento.matnr}`}
+        maxWidth="md"
+      >
+        {dictamenObjetivo && (
+          <form onSubmit={confirmarDictamen} className="space-y-4">
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {dictamenObjetivo.decision === 1
+                ? 'Al confirmar, el movimiento quedará aprobado.'
+                : 'Al confirmar, el movimiento quedará rechazado.'}
+              {' '}SQL Server guardará la fecha y hora de esta acción.
+            </p>
+            <div>
+              <label htmlFor="nombre-responsable" className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+                Nombre del responsable
+              </label>
+              <input
+                id="nombre-responsable"
+                name="nombre-responsable"
+                type="text"
+                autoComplete="name"
+                maxLength={200}
+                required
+                value={nombreResponsable}
+                onChange={(event) => setNombreResponsable(event.target.value)}
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                placeholder="Nombre y apellido"
+              />
+            </div>
+            {errorDictamen && (
+              <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+                {errorDictamen}
+              </div>
+            )}
+            <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+              <Button type="button" variant="ghost" onClick={cerrarConfirmacionDictamen} disabled={dictamenEnviando}>
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                variant={dictamenObjetivo.decision === 1 ? 'success' : 'danger'}
+                loading={dictamenEnviando}
+                disabled={!nombreResponsable.trim()}
+              >
+                {dictamenObjetivo.decision === 1 ? 'Confirmar aprobación' : 'Confirmar rechazo'}
+              </Button>
+            </div>
+          </form>
         )}
       </Modal>
     </div>

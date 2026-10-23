@@ -1,17 +1,86 @@
-import type { Movimiento, Motivo, Notificacion, RazonCatalogo, MovimientoTipoCatalogo, CertificacionCatalogo } from '../types';
-import { MOVIMIENTOS_INICIALES, MOTIVOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
+import type { Movimiento, MovimientoDB, Motivo, Notificacion, RazonCatalogo, MovimientoTipoCatalogo, CertificacionCatalogo } from '../types';
+import { MOTIVOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
 import { MOVIMIENTO_TIPOS_SSMS, CERTIFICACIONES_PLANTA } from '../constants';
 
+function adaptarMovimiento(row: MovimientoDB): Movimiento {
+  const fechaHora = row.fecha_hora.replace(' ', 'T').slice(0, 19);
+  const fecha = fechaHora.slice(0, 10);
+  const hora = fechaHora.slice(11, 16);
+  const tipo = MOVIMIENTO_TIPOS_SSMS.find((item) => item.id === row.MovimientoTipoId);
+  const estatus = row.aprobado === 1
+    ? 'Aprobado'
+    : row.aprobado === 2
+      ? 'Rechazado'
+      : row.aprobado === 0
+        ? 'Pendiente'
+        : 'Sin dictamen';
+
+  return {
+    datosDB: row,
+    id: String(row.id),
+    certificacionId: row.CertificacionId,
+    matnr: row.MATNR,
+    matnrFg: row.MATNR_FG || undefined,
+    fechaHora,
+    fecha,
+    hora,
+    credencial: row.credencial,
+    movimientoTipoId: row.MovimientoTipoId,
+    movimientoTipo: tipo?.nombre || 'Tipo desconocido',
+    cantidad: row.cantidad,
+    salida: row.salida,
+    retorno: row.retorno,
+    aprobado: row.aprobado,
+    razonId: row.RazonId,
+    motivoEspecifico: '',
+    almacen: row.almacen || '',
+    serial: row.serial || '',
+    nvAprobadoPor: row.nvAprobadoPor || undefined,
+    dtAprobado: row.dtAprobado || undefined,
+    empleado: '',
+    descripcion: '',
+    linea: '',
+    estatus,
+    unidad: 'PZA',
+    costoUnitario: 0,
+    costoTotal: 0,
+    historial: [],
+  };
+}
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+
+async function solicitarMovimientos(): Promise<Movimiento[]> {
+  const response = await fetch(`${API_BASE}/movimientos`);
+  const body = await response.json() as { exitoso: boolean; datos?: MovimientoDB[]; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.datos) {
+    throw new Error(body.mensaje || `No se pudieron cargar los movimientos (HTTP ${response.status}).`);
+  }
+  return body.datos.map(adaptarMovimiento);
+}
+
+async function enviarDictamen(id: string, aprobado: 1 | 2, aprobadoPor: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/movimientos/${encodeURIComponent(id)}/dictamen`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ aprobado, aprobadoPor }),
+  });
+  const body = await response.json() as { exitoso: boolean; mensaje?: string };
+  if (!response.ok || !body.exitoso) {
+    throw new Error(body.mensaje || `No se pudo registrar el dictamen (HTTP ${response.status}).`);
+  }
+}
+
 /**
- * Servicio adaptado a la arquitectura de datos de SQL Server Management Studio (dbo.Movimientos).
- * Opera con fidelidad 100% sobre el modelo de datos de planta.
+ * Movimientos se leen de SQL Server. Los catálogos secundarios siguen siendo locales
+ * hasta que se acuerde integrar sus tablas. Los dictámenes se guardan en SQL Server.
  */
 export const ScrapService = {
-  obtenerMovimientos: async (): Promise<Movimiento[]> => {
-    return new Promise((resolve) => {
-      setTimeout(() => resolve(MOVIMIENTOS_INICIALES), 80);
-    });
-  },
+  obtenerMovimientos: () => solicitarMovimientos(),
+
+  aprobarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 1, aprobadoPor),
+
+  rechazarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 2, aprobadoPor),
 
   obtenerMotivos: async (): Promise<Motivo[]> => {
     return new Promise((resolve) => {

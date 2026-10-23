@@ -379,16 +379,10 @@ npm run preview
 
 ---
 
-## 10. Guía de Extensión: Conexión Futura a Backend Real
+## 10. Integración actual con SQL Server
 
-El sistema fue diseñado desacoplando deliberadamente la capa de datos. Para conectar este frontend a una API REST, GraphQL o conector SAP real en el futuro, solo se requieren dos pasos:
+El frontend consulta `GET /api/movimientos`; por defecto, el backend filtra desde SQL Server únicamente las filas de 2025 mediante `fecha_hora` (`>= 2025-01-01` y `< 2026-01-01`), sin cargar otros años. La API admite `fechaInicio` (incluyente) y `fechaFin` (excluyente), en formato `YYYY-MM-DD`, para consultas técnicas con otro rango; las vistas actuales no mandan esos parámetros. El tablero muestra de forma fija el año 2025. La respuesta conserva las columnas originales de la tabla. La interfaz presenta los campos indicados como utilizables en `Base de datos Estructura/Estructura.txt`; los campos marcados como ignorados o pendientes no se utilizan todavía.
 
-1. **Reemplazar el Proveedor de Datos en `ScrapContext.tsx`:**
-   Sustituir la lectura inicial de `localStorage` por llamadas HTTP (usando `fetch` o `axios`) hacia los endpoints correspondientes:
-   - `GET /api/v1/movimientos`
-   - `POST /api/v1/movimientos`
-   - `PATCH /api/v1/movimientos/:id/aprobar`
-   - `PATCH /api/v1/movimientos/:id/rechazar`
-   - `GET /api/v1/motivos`
-2. **Actualizar `ScrapService`:**
-   Reemplazar las promesas simuladas en `src/services/scrapService.ts` por llamadas reales a la pasarela de servicios OData de SAP S/4HANA o al backend central MES de la planta.
+La bandeja envía `PATCH /api/movimientos/:id/dictamen` para aprobar o rechazar. La API exige una decisión válida y el nombre del responsable; modifica solo filas con `aprobado = 0`, guarda la decisión en `aprobado`, el nombre en `nvAprobadoPor` y la hora del servidor SQL en `dtAprobado`. Las altas de movimientos, catálogos en vivo y la integración con SAP siguen pendientes.
+
+El nombre del responsable es ingresado manualmente y no autentica al empleado. La API no tiene autenticación/autorización de usuario implementada; antes de exponer esta acción fuera de un entorno controlado, integrar identidad y restringir el acceso de red y de base de datos. Los dictámenes se guardan en datos reales y no se revierten por la interfaz.

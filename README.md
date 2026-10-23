@@ -63,7 +63,9 @@ Inspirado en los lineamientos visuales y de interacción de **SAP Fiori**, **Mic
 - **Animaciones:** [Framer Motion](https://www.framer.com/motion/)
 - **Gráficas:** [Recharts](https://recharts.org/)
 - **Iconos:** [Lucide React](https://lucide.dev/)
-- **Almacenamiento:** Context API + `localStorage` (100% Mock, sin backend externo)
+- **Movimientos:** lectura en vivo desde `SOE.dbo.Movimientos` mediante la API Node/Express. El resto de catálogos sigue usando datos locales.
+- **Acceso a la base:** autenticación y conexión configuradas en `BaseDeDatos/.env`; la consulta de movimientos es de lectura y la bandeja puede actualizar los campos de dictamen para aprobar o rechazar filas pendientes.
+- **Rango de datos actual:** las vistas consultan solo los movimientos de 2025 desde SQL Server. El tablero también indica explícitamente que muestra ese año.
 
 ---
 

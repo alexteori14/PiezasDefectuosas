@@ -6,17 +6,14 @@ import {
   Database,
   FileCode,
   FolderGit2,
-  CheckCircle2,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
-import { useTheme } from '../context/ThemeContext';
 import { Button } from '../components/common/Button';
 import { Card } from '../components/common/Card';
 import { INFO_PLANTA, TURNOS_PLANTA, ALMACENES } from '../constants';
 
 export const ConfiguracionPage: React.FC = () => {
-  const { turnoActivo, setTurnoActivo, resetearDatosMock, agregarToast } = useScrap();
-  const { theme, setTheme } = useTheme();
+  const { turnoActivo, resetearDatosMock, agregarToast } = useScrap();
 
   const [plantaConfig, setPlantaConfig] = useState({
     nombre: INFO_PLANTA.nombre,
@@ -204,18 +201,17 @@ export const ConfiguracionPage: React.FC = () => {
         {/* Turnos de Operación y Umbrales de Calidad */}
         <Card
           title="Turnos de Manufactura & Metas de Calidad"
-          subtitle="Horarios de relevo y límites admisibles de scrap diario"
+          subtitle="Horarios fijos; el turno activo se calcula automáticamente con el reloj local."
         >
           <div className="space-y-4 text-xs">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {TURNOS_PLANTA.map((turno) => (
                 <div
                   key={turno.id}
-                  onClick={() => setTurnoActivo(turno.id)}
-                  className={`p-3 rounded-xl border cursor-pointer transition-all ${
+                  className={`p-3 rounded-xl border transition-all ${
                     turnoActivo === turno.id
                       ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-500 text-blue-900 dark:text-blue-100 font-semibold'
-                      : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300'
+                      : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -225,6 +221,11 @@ export const ConfiguracionPage: React.FC = () => {
                     )}
                   </div>
                   <div className="text-[11px] opacity-75 font-mono mt-1">{turno.horario}</div>
+                  {turnoActivo === turno.id && (
+                    <div className="text-[10px] mt-2 font-normal">
+                      Activo según la hora local del dispositivo
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

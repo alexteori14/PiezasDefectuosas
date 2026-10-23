@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
-  CheckCircle,
-  XCircle,
   Printer,
   ShieldCheck,
   User,
@@ -16,17 +14,12 @@ import { useScrap } from '../context/ScrapContext';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Card } from '../components/common/Card';
-import { Modal } from '../components/common/Modal';
-import { formatearMoneda, simularImpresionPDF } from '../utils/formatters';
+import { simularImpresionPDF } from '../utils/formatters';
 
 export const MovimientoDetallePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { movimientos, aprobarMovimiento, rechazarMovimiento } = useScrap();
-
-  const [modalAprobarAbierto, setModalAprobarAbierto] = useState(false);
-  const [modalRechazarAbierto, setModalRechazarAbierto] = useState(false);
-  const [comentarios, setComentarios] = useState('');
+  const { movimientos } = useScrap();
 
   const movimiento = movimientos.find((m) => m.id === id || m.serial === id);
 
@@ -45,18 +38,6 @@ export const MovimientoDetallePage: React.FC = () => {
       </div>
     );
   }
-
-  const handleAprobar = () => {
-    aprobarMovimiento(movimiento.id, comentarios || 'Aprobado en revisión técnica individual');
-    setModalAprobarAbierto(false);
-    setComentarios('');
-  };
-
-  const handleRechazar = () => {
-    rechazarMovimiento(movimiento.id, comentarios || 'Rechazado en revisión técnica individual');
-    setModalRechazarAbierto(false);
-    setComentarios('');
-  };
 
   return (
     <div className="space-y-6">
@@ -98,27 +79,6 @@ export const MovimientoDetallePage: React.FC = () => {
             Imprimir Marbete
           </Button>
 
-          {movimiento.aprobado === 0 && (
-            <>
-              <Button
-                variant="success"
-                size="sm"
-                icon={<CheckCircle className="w-4 h-4" />}
-                onClick={() => setModalAprobarAbierto(true)}
-              >
-                Aprobar (aprobado = 1)
-              </Button>
-
-              <Button
-                variant="danger"
-                size="sm"
-                icon={<XCircle className="w-4 h-4" />}
-                onClick={() => setModalRechazarAbierto(true)}
-              >
-                Rechazar (aprobado = 2)
-              </Button>
-            </>
-          )}
         </div>
       </div>
 
@@ -136,13 +96,15 @@ export const MovimientoDetallePage: React.FC = () => {
           <ShieldCheck className="w-6 h-6 shrink-0" />
           <div>
             <h4 className="font-semibold text-xs sm:text-sm">
-              Dictamen SSMS: {movimiento.aprobado === 1 ? 'Aprobado (aprobado = 1)' : movimiento.aprobado === 2 ? 'Rechazado (aprobado = 2)' : 'Pendiente (aprobado = 0)'}
+              Dictamen: {movimiento.aprobado === null ? 'No integrado' : movimiento.aprobado === 1 ? 'Aprobado (aprobado = 1)' : movimiento.aprobado === 2 ? 'Rechazado (aprobado = 2)' : 'Pendiente (aprobado = 0)'}
             </h4>
             <p className="text-xs opacity-90">
               {movimiento.aprobado === 1 &&
                 `Dictaminado por ${movimiento.nvAprobadoPor || 'Supervisor de Calidad'} el ${movimiento.dtAprobado || movimiento.fechaHora}.`}
               {movimiento.aprobado === 2 &&
                 `Rechazado por ${movimiento.nvAprobadoPor || 'Supervisor de Calidad'}. Desviado a bahía de retrabajo.`}
+              {movimiento.aprobado === null &&
+                'La integración del campo de aprobación está pendiente.'}
               {movimiento.aprobado === 0 &&
                 'En espera de firma digital del supervisor de calidad para contabilización en SAP S/4HANA.'}
             </p>
@@ -219,9 +181,8 @@ export const MovimientoDetallePage: React.FC = () => {
                 <span className="text-[10px] text-slate-400 block font-mono">RazonId (EtiquetasCI)</span>
                 <div className="flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
                   <Tag className="w-3 h-3" />
-                  <span>{movimiento.razonId}</span>
+                  <span>{movimiento.razonId ?? 'Sin razón'}</span>
                 </div>
-                <span className="text-[10px] text-slate-400 block truncate">{movimiento.motivoEspecifico}</span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
@@ -236,18 +197,18 @@ export const MovimientoDetallePage: React.FC = () => {
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
                 <span className="text-[10px] text-slate-400 block font-mono">centro_costo (varchar 50)</span>
-                <span className="font-mono text-slate-700 dark:text-slate-300">{movimiento.centroCosto || 'N/A'}</span>
+                <span className="font-mono text-slate-500 dark:text-slate-400">Ignorado según instrucciones</span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
                 <span className="text-[10px] text-slate-400 block font-mono">Empleado (varchar 250)</span>
-                <span className="text-slate-800 dark:text-slate-200 font-medium truncate block">{movimiento.empleado}</span>
+                <span className="text-slate-500 dark:text-slate-400 font-medium truncate block">Pendiente de integración</span>
               </div>
 
               <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
                 <span className="text-[10px] text-slate-400 block font-mono">aprobado (int)</span>
                 <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                  {movimiento.aprobado} ({movimiento.estatus})
+                  {movimiento.aprobado === null ? 'Pendiente de integración' : `${movimiento.aprobado} (${movimiento.estatus})`}
                 </span>
               </div>
 
@@ -311,7 +272,7 @@ export const MovimientoDetallePage: React.FC = () => {
 
         {/* Columna Derecha: Marbete Viajero Físico Simulado */}
         <div className="space-y-6">
-          <Card title="Marbete Viajero de Planta (Etiqueta Física)">
+          <Card title="Vista previa de marbete (simulada)">
             <div className="p-4 bg-amber-50/50 dark:bg-slate-800/80 rounded-xl border border-dashed border-amber-300 dark:border-slate-700 font-mono text-xs space-y-4 shadow-inner">
               {/* Encabezado del Marbete */}
               <div className="text-center border-b border-dashed border-slate-300 dark:border-slate-700 pb-3">
@@ -353,7 +314,7 @@ export const MovimientoDetallePage: React.FC = () => {
                 <div className="flex justify-between">
                   <span className="text-slate-500">Razón (Falla):</span>
                   <span className="font-bold text-amber-600 dark:text-amber-400">
-                    {movimiento.razonId} - {movimiento.motivoEspecifico}
+                    {movimiento.razonId ?? 'Sin razón'}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -368,7 +329,7 @@ export const MovimientoDetallePage: React.FC = () => {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Credencial:</span>
-                  <span>{movimiento.credencial} ({movimiento.empleado})</span>
+                  <span>{movimiento.credencial}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Fecha/Hora:</span>
@@ -376,7 +337,7 @@ export const MovimientoDetallePage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Código de Barras Simulado */}
+              {/* Patrón visual de ejemplo; no es un código de barras escaneable. */}
               <div className="border-t border-dashed border-slate-300 dark:border-slate-700 pt-3 text-center space-y-1">
                 <div className="h-10 bg-slate-900 dark:bg-white flex items-center justify-center rounded-xs px-2">
                   <div className="flex items-center gap-0.5 h-7 w-full justify-center overflow-hidden">
@@ -399,73 +360,6 @@ export const MovimientoDetallePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Modal de Aprobación */}
-      <Modal
-        isOpen={modalAprobarAbierto}
-        onClose={() => setModalAprobarAbierto(false)}
-        title="Aprobar Movimiento en Base de Datos"
-      >
-        <div className="space-y-4 text-xs">
-          <p className="text-slate-600 dark:text-slate-300">
-            Se registrará en la tabla <code className="font-mono text-blue-600">dbo.Movimientos</code> el valor{' '}
-            <strong className="text-emerald-600">aprobado = 1</strong> para el folio serial <strong>{movimiento.serial}</strong>.
-          </p>
-          <div>
-            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-              Observaciones / Justificación de Calidad
-            </label>
-            <textarea
-              rows={3}
-              value={comentarios}
-              onChange={(e) => setComentarios(e.target.value)}
-              placeholder="Aprobado conforme a GD&T y disposición de chatarra..."
-              className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setModalAprobarAbierto(false)}>
-              Cancelar
-            </Button>
-            <Button variant="success" onClick={handleAprobar}>
-              Confirmar y Autorizar (aprobado = 1)
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Modal de Rechazo */}
-      <Modal
-        isOpen={modalRechazarAbierto}
-        onClose={() => setModalRechazarAbierto(false)}
-        title="Rechazar Solicitud de Scrap"
-      >
-        <div className="space-y-4 text-xs">
-          <p className="text-slate-600 dark:text-slate-300">
-            Se registrará en <code className="font-mono text-blue-600">dbo.Movimientos</code> el valor{' '}
-            <strong className="text-rose-600">aprobado = 2</strong> y el material será desviado de scrap contable a retrabajo.
-          </p>
-          <div>
-            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-              Motivo Técnico de Rechazo
-            </label>
-            <textarea
-              rows={3}
-              value={comentarios}
-              onChange={(e) => setComentarios(e.target.value)}
-              placeholder="Pieza recuperable con rectificado en bahía de retrabajo ALM-12..."
-              className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <Button variant="ghost" onClick={() => setModalRechazarAbierto(false)}>
-              Cancelar
-            </Button>
-            <Button variant="danger" onClick={handleRechazar}>
-              Confirmar Rechazo (aprobado = 2)
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 };

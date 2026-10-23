@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import type { Motivo, Movimiento, Notificacion, ResumenKPIs, Turno, RazonCatalogo } from '../types';
-import { MOTIVOS_INICIALES, MOVIMIENTOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
-import { MOVIMIENTO_TIPOS_SSMS } from '../constants';
+import { MOTIVOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
+import { ScrapService } from '../services/scrapService';
+import { obtenerTurnoActual } from '../constants';
 
 interface ToastMessage {
   id: string;
@@ -12,18 +13,20 @@ interface ToastMessage {
 
 interface ScrapContextType {
   movimientos: Movimiento[];
+  movimientosCargando: boolean;
+  errorMovimientos: string | null;
+  recargarMovimientos: () => void;
   motivos: Motivo[];
   razonesCatalogo: RazonCatalogo[];
   notificaciones: Notificacion[];
   turnoActivo: Turno;
-  setTurnoActivo: (turno: Turno) => void;
   resumenKPIs: ResumenKPIs;
   toasts: ToastMessage[];
   agregarToast: (tipo: ToastMessage['tipo'], titulo: string, mensaje: string) => void;
   removerToast: (id: string) => void;
-  aprobarMovimiento: (id: string, comentarios?: string) => void;
-  rechazarMovimiento: (id: string, comentarios?: string) => void;
-  crearMovimiento: (nuevo: Partial<Movimiento>) => Movimiento;
+  aprobarMovimiento: (id: string, aprobadoPor: string) => Promise<void>;
+  rechazarMovimiento: (id: string, aprobadoPor: string) => Promise<void>;
+  crearMovimiento: (nuevo: Partial<Movimiento>) => void;
   crearMotivo: (nuevo: Omit<Motivo, 'id'>) => Motivo;
   actualizarMotivo: (id: string, actualizacion: Partial<Motivo>) => void;
   eliminarMotivo: (id: string) => void;
@@ -35,24 +38,15 @@ interface ScrapContextType {
 const ScrapContext = createContext<ScrapContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  MOVIMIENTOS: 'scrap_mes_movimientos_ssms_v2',
   MOTIVOS: 'scrap_mes_motivos_ssms_v2',
   NOTIFICACIONES: 'scrap_mes_notificaciones_ssms_v2',
-  TURNO: 'scrap_mes_turno_ssms_v2',
 };
 
 export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [movimientos, setMovimientos] = useState<Movimiento[]>(() => {
-    const guardado = localStorage.getItem(STORAGE_KEYS.MOVIMIENTOS);
-    if (guardado) {
-      try {
-        return JSON.parse(guardado);
-      } catch (e) {
-        console.error('Error al cargar movimientos de localStorage', e);
-      }
-    }
-    return MOVIMIENTOS_INICIALES;
-  });
+  const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [movimientosCargando, setMovimientosCargando] = useState(true);
+  const [errorMovimientos, setErrorMovimientos] = useState<string | null>(null);
+  const [recargaMovimientos, setRecargaMovimientos] = useState(0);
 
   const [motivos, setMotivos] = useState<Motivo[]>(() => {
     const guardado = localStorage.getItem(STORAGE_KEYS.MOTIVOS);
@@ -80,17 +74,56 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return NOTIFICACIONES_INICIALES;
   });
 
-  const [turnoActivo, setTurnoActivoState] = useState<Turno>(() => {
-    const guardado = localStorage.getItem(STORAGE_KEYS.TURNO);
-    return (guardado as Turno) || 'Turno 1';
-  });
+  const [turnoActivo, setTurnoActivoState] = useState(() => obtenerTurnoActual(new Date()));
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
-  // Guardar en localStorage
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.MOVIMIENTOS, JSON.stringify(movimientos));
-  }, [movimientos]);
+    let vigente = true;
+    setMovimientosCargando(true);
+    setErrorMovimientos(null);
+    ScrapService.obtenerMovimientos()
+      .then((datos) => {
+        if (vigente) setMovimientos(datos);
+      })
+      .catch((error: unknown) => {
+        if (vigente) {
+          setMovimientos([]);
+          setErrorMovimientos(error instanceof Error ? error.message : 'No se pudieron cargar movimientos.');
+        }
+      })
+      .finally(() => {
+        if (vigente) setMovimientosCargando(false);
+      });
+    return () => { vigente = false; };
+  }, [recargaMovimientos]);
+
+  const recargarMovimientos = () => setRecargaMovimientos((actual) => actual + 1);
+
+  useEffect(() => {
+    let temporizador: number;
+    const programarCambioTurno = () => {
+      const ahora = new Date();
+      const minutosDelDia = ahora.getHours() * 60 + ahora.getMinutes();
+      const siguienteCambio = new Date(ahora);
+      if (minutosDelDia < 6 * 60) {
+        siguienteCambio.setHours(6, 0, 0, 0);
+      } else if (minutosDelDia < 14 * 60) {
+        siguienteCambio.setHours(14, 0, 0, 0);
+      } else if (minutosDelDia < 22 * 60) {
+        siguienteCambio.setHours(22, 0, 0, 0);
+      } else {
+        siguienteCambio.setDate(siguienteCambio.getDate() + 1);
+        siguienteCambio.setHours(6, 0, 0, 0);
+      }
+      temporizador = window.setTimeout(() => {
+        setTurnoActivoState(obtenerTurnoActual(new Date()));
+        programarCambioTurno();
+      }, siguienteCambio.getTime() - ahora.getTime());
+    };
+    programarCambioTurno();
+    return () => window.clearTimeout(temporizador);
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.MOTIVOS, JSON.stringify(motivos));
@@ -99,12 +132,6 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.NOTIFICACIONES, JSON.stringify(notificaciones));
   }, [notificaciones]);
-
-  const setTurnoActivo = (turno: Turno) => {
-    setTurnoActivoState(turno);
-    localStorage.setItem(STORAGE_KEYS.TURNO, turno);
-    agregarToast('info', 'Cambio de Turno', `Operando en ${turno}`);
-  };
 
   const agregarToast = (tipo: ToastMessage['tipo'], titulo: string, mensaje: string) => {
     const id = Date.now().toString() + Math.random().toString().slice(2, 6);
@@ -118,153 +145,20 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const aprobarMovimiento = (id: string, comentarios = 'Aprobado conforme a procedimiento de scrap') => {
-    const ahora = new Date();
-    const fechaHoraStr = `${ahora.toISOString().split('T')[0]} ${ahora.toTimeString().slice(0, 5)}`;
-    const supervisor = 'Ing. Carlos Mendoza';
-
-    setMovimientos((prev) =>
-      prev.map((m) => {
-        if (m.id === id || m.serial === id) {
-          const nuevoHistorial = [
-            ...(m.historial || []),
-            {
-              id: `H-${Date.now()}`,
-              titulo: 'Aprobación de Scrap Autorizada (aprobado = 1)',
-              descripcion: `${comentarios} • Registrado en dbo.Movimientos por ${supervisor}`,
-              fechaHora: fechaHoraStr,
-              usuario: supervisor,
-              rol: 'Supervisor de Calidad',
-              estado: 'completado' as const,
-            },
-          ];
-          return {
-            ...m,
-            aprobado: 1, // 1: Aprobado en SSMS
-            nvAprobadoPor: supervisor,
-            dtAprobado: fechaHoraStr,
-            estatus: 'Aprobado' as const,
-            comentariosAprobacion: comentarios,
-            historial: nuevoHistorial,
-          };
-        }
-        return m;
-      })
-    );
-
-    agregarToast('success', 'Movimiento Aprobado', `El folio ${id} fue aprobado (aprobado = 1) en la base de datos.`);
+  const aprobarMovimiento = async (id: string, aprobadoPor: string) => {
+    await ScrapService.aprobarMovimiento(id, aprobadoPor);
+    agregarToast('success', 'Movimiento aprobado', `El dictamen del movimiento ${id} se guardó en dbo.Movimientos.`);
+    recargarMovimientos();
   };
 
-  const rechazarMovimiento = (id: string, comentarios = 'Rechazado por evaluación técnica') => {
-    const ahora = new Date();
-    const fechaHoraStr = `${ahora.toISOString().split('T')[0]} ${ahora.toTimeString().slice(0, 5)}`;
-    const supervisor = 'Ing. Carlos Mendoza';
-
-    setMovimientos((prev) =>
-      prev.map((m) => {
-        if (m.id === id || m.serial === id) {
-          const nuevoHistorial = [
-            ...(m.historial || []),
-            {
-              id: `H-${Date.now()}`,
-              titulo: 'Solicitud de Scrap Rechazada (aprobado = 2)',
-              descripcion: `${comentarios} • Desviado de scrap contable a recuperación`,
-              fechaHora: fechaHoraStr,
-              usuario: supervisor,
-              rol: 'Supervisor de Calidad',
-              estado: 'rechazado' as const,
-            },
-          ];
-          return {
-            ...m,
-            aprobado: 2, // 2: Rechazado en SSMS
-            nvAprobadoPor: supervisor,
-            dtAprobado: fechaHoraStr,
-            estatus: 'Rechazado' as const,
-            almacen: 'ALM-12', // Canalizado a retrabajo
-            comentariosAprobacion: comentarios,
-            historial: nuevoHistorial,
-          };
-        }
-        return m;
-      })
-    );
-
-    agregarToast('warning', 'Movimiento Rechazado', `El folio ${id} fue rechazado (aprobado = 2) y reenviado a análisis.`);
+  const rechazarMovimiento = async (id: string, aprobadoPor: string) => {
+    await ScrapService.rechazarMovimiento(id, aprobadoPor);
+    agregarToast('success', 'Movimiento rechazado', `El dictamen del movimiento ${id} se guardó en dbo.Movimientos.`);
+    recargarMovimientos();
   };
 
-  const crearMovimiento = (nuevo: Partial<Movimiento>): Movimiento => {
-    const hoy = new Date();
-    const fecha = nuevo.fecha || hoy.toISOString().split('T')[0];
-    const hora = nuevo.hora || hoy.toTimeString().slice(0, 5);
-    const fechaHora = `${fecha} ${hora}`;
-    const idNumerico = (movimientos.length + 1).toString();
-    const serial = nuevo.serial || `ETQ-2026-${Math.floor(10000 + Math.random() * 90000)}`;
-
-    const tipoObj = MOVIMIENTO_TIPOS_SSMS.find((t) => t.id === nuevo.movimientoTipoId) || MOVIMIENTO_TIPOS_SSMS[0];
-    const razonObj = RAZONES_SSMS.find((r) => r.idRazon === nuevo.razonId) || RAZONES_SSMS[0];
-
-    const movimientoCreado: Movimiento = {
-      id: idNumerico,
-      certificacionId: nuevo.certificacionId || 101,
-      certificacionNombre: nuevo.certificacionNombre || 'Estación Certificadora Prensa 01',
-      matnr: nuevo.matnr || 'MAT-849201',
-      matnrFg: nuevo.matnrFg || 'FG-CX9-FND-LH',
-      fechaHora,
-      fecha,
-      hora,
-      credencial: nuevo.credencial || 'EMP-3041',
-      empleadoId: nuevo.empleadoId || nuevo.credencial || 'EMP-3041',
-      empleado: nuevo.empleado || 'Operador en Piso',
-      movimientoTipoId: nuevo.movimientoTipoId || tipoObj.id,
-      movimientoTipo: nuevo.movimientoTipo || tipoObj.nombre,
-      cantidad: Number(nuevo.cantidad) || 1,
-      salida: true,
-      retorno: false,
-      procesado: 0,
-      aprobado: 0, // 0: Pendiente en SSMS
-      razonId: nuevo.razonId || razonObj.idRazon,
-      motivoEspecifico: nuevo.motivoEspecifico || razonObj.descripcion,
-      centroCosto: nuevo.centroCosto || 'CC-ESTAMP',
-      almacen: nuevo.almacen || (tipoObj.id === 1 ? 'ALM-99' : 'ALM-02'),
-      serial,
-      descripcion: nuevo.descripcion || 'Componente Automotriz en Proceso',
-      linea: nuevo.linea || 'L-01 Estampado Pesado Prensa Transfer',
-      almacenSalida: nuevo.almacenSalida || 'ALM-02 (WIP)',
-      almacenRetorno: nuevo.almacenRetorno || 'ALM-99 (Scrap Yard)',
-      estatus: 'Pendiente',
-      turno: nuevo.turno || turnoActivo,
-      unidad: nuevo.unidad || 'PZA',
-      costoUnitario: Number(nuevo.costoUnitario) || (razonObj.ccSugerido ? parseFloat(razonObj.ccSugerido) : 185),
-      costoTotal: (Number(nuevo.costoUnitario) || 185) * (Number(nuevo.cantidad) || 1),
-      ordenProduccion: nuevo.ordenProduccion || `OP-450${Math.floor(1000 + Math.random() * 9000)}`,
-      lote: nuevo.lote || `LOT-${hoy.getFullYear()}${hoy.getMonth() + 1}-A1`,
-      observaciones: nuevo.observaciones || '',
-      historial: [
-        {
-          id: `H-INIT-${Date.now()}`,
-          titulo: 'Registro de Movimiento en dbo.Movimientos',
-          descripcion: `Etiqueta serial ${serial} emitida en Estación ${nuevo.certificacionId || 101}. Razón ${nuevo.razonId || razonObj.idRazon}: ${nuevo.motivoEspecifico || razonObj.descripcion}.`,
-          fechaHora,
-          usuario: nuevo.empleado || 'Operador',
-          rol: 'Operador de Producción',
-          estado: 'completado',
-        },
-        {
-          id: `H-PEND-${Date.now()}`,
-          titulo: 'Pendiente de Validación (aprobado = 0)',
-          descripcion: 'Enviado a bandeja de aprobaciones de calidad y supervisor de turno.',
-          fechaHora,
-          usuario: 'Sistema MES',
-          rol: 'Control',
-          estado: 'actual',
-        },
-      ],
-    };
-
-    setMovimientos((prev) => [movimientoCreado, ...prev]);
-    agregarToast('success', 'Movimiento Creado', `Folio serial ${serial} registrado correctamente en la base de datos.`);
-    return movimientoCreado;
+  const crearMovimiento = (_nuevo: Partial<Movimiento>) => {
+    agregarToast('warning', 'Registro no integrado', 'La aplicación consulta dbo.Movimientos, pero todavía no crea registros en la tabla.');
   };
 
   const crearMotivo = (nuevo: Omit<Motivo, 'id'>): Motivo => {
@@ -298,20 +192,18 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetearDatosMock = () => {
-    localStorage.removeItem(STORAGE_KEYS.MOVIMIENTOS);
     localStorage.removeItem(STORAGE_KEYS.MOTIVOS);
     localStorage.removeItem(STORAGE_KEYS.NOTIFICACIONES);
-    setMovimientos(MOVIMIENTOS_INICIALES);
     setMotivos(MOTIVOS_INICIALES);
     setNotificaciones(NOTIFICACIONES_INICIALES);
-    agregarToast('info', 'Datos Reiniciados', 'Valores restaurados al estándar oficial de dbo.Movimientos.');
+    agregarToast('info', 'Datos locales reiniciados', 'Los movimientos de SQL Server no fueron modificados.');
   };
 
   // Cálculo reactivo de KPIs ejecutivos
   const resumenKPIs = useMemo<ResumenKPIs>(() => {
     const scrapMovs = movimientos.filter((m) => m.movimientoTipoId === 1 || m.movimientoTipo === 'Scrap');
     const scrapHoyPzas = scrapMovs.reduce((sum, m) => sum + m.cantidad, 0);
-    const scrapHoyCosto = scrapMovs.reduce((sum, m) => sum + m.costoTotal, 0);
+    const scrapHoyCosto = 0;
     const pendientesAprobar = movimientos.filter((m) => m.aprobado === 0 || m.estatus === 'Pendiente').length;
     const aprobadosHoy = movimientos.filter((m) => m.aprobado === 1 || m.estatus === 'Aprobado').length;
     const rechazadosHoy = movimientos.filter((m) => m.aprobado === 2 || m.estatus === 'Rechazado').length;
@@ -322,8 +214,8 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       pendientesAprobar,
       aprobadosHoy,
       rechazadosHoy,
-      tasaScrapGeneral: 1.2,
-      comparativaAyer: -0.4,
+      tasaScrapGeneral: 0,
+      comparativaAyer: 0,
     };
   }, [movimientos]);
 
@@ -331,11 +223,13 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     <ScrapContext.Provider
       value={{
         movimientos,
+        movimientosCargando,
+        errorMovimientos,
+        recargarMovimientos,
         motivos,
         razonesCatalogo,
         notificaciones,
         turnoActivo,
-        setTurnoActivo,
         resumenKPIs,
         toasts,
         agregarToast,

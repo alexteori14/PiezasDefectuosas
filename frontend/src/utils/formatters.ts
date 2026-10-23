@@ -30,49 +30,43 @@ export const descargarCSV = (datos: Movimiento[], nombreArchivo = 'reporte-scrap
 
   const cabeceras = [
     'ID',
-    'MATNR (Material)',
-    'Descripción',
-    'Fecha',
-    'Hora',
-    'Turno',
-    'Línea',
-    'Tipo Movimiento',
-    'Motivo Específico',
-    'Cantidad',
-    'Unidad',
-    'Almacén Salida',
-    'Almacén Retorno',
-    'Estatus',
-    'Costo Unitario (USD)',
-    'Costo Total (USD)',
+    'CertificacionId',
+    'MATNR',
+    'fecha_hora',
+    'credencial',
+    'MovimientoTipoId',
+    'cantidad',
+    'salida',
+    'retorno',
+    'EmpleadoId',
     'Empleado',
-    'Credencial',
-    'Orden de Producción',
-    'Lote',
+    'procesado',
+    'aprobado',
+    'RazonId',
+    'centro_costo',
+    'almacen',
+    'serial',
+    'MATNR_FG',
+    'nvAprobadoPor',
+    'dtAprobado',
   ];
 
-  const filas = datos.map((m) => [
-    m.id,
-    m.matnr,
-    `"${m.descripcion.replace(/"/g, '""')}"`,
-    m.fecha,
-    m.hora,
-    m.turno,
-    `"${m.linea}"`,
-    m.movimientoTipo,
-    `"${m.motivoEspecifico.replace(/"/g, '""')}"`,
-    m.cantidad,
-    m.unidad,
-    m.almacenSalida,
-    m.almacenRetorno,
-    m.estatus,
-    m.costoUnitario,
-    m.costoTotal,
-    `"${m.empleado}"`,
-    m.credencial,
-    m.ordenProduccion || '',
-    m.lote || '',
-  ]);
+  const escaparCSV = (valor: unknown) => {
+    const texto = valor === null || valor === undefined ? '' : String(valor);
+    return `"${texto.replace(/"/g, '""')}"`;
+  };
+  const filas = datos.map((m) => {
+    const row = m.datosDB;
+    return row
+      ? [
+          row.id, row.CertificacionId, row.MATNR, row.fecha_hora, row.credencial,
+          row.MovimientoTipoId, row.cantidad, row.salida, row.retorno, row.EmpleadoId,
+          row.Empleado, row.procesado, row.aprobado, row.RazonId, row.centro_costo,
+          row.almacen, row.serial, row.MATNR_FG, row.nvAprobadoPor, row.dtAprobado,
+        ].map(escaparCSV)
+      : [m.id, m.certificacionId, m.matnr, m.fechaHora, m.credencial, m.movimientoTipoId, m.cantidad]
+          .map(escaparCSV);
+  });
 
   const contenido = [cabeceras.join(','), ...filas.map((f) => f.join(','))].join('\r\n');
   const blob = new Blob(['\uFEFF' + contenido], { type: 'text/csv;charset=utf-8;' });

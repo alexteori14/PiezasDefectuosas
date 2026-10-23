@@ -17,7 +17,6 @@ import {
 import { useTheme } from '../context/ThemeContext';
 import { useScrap } from '../context/ScrapContext';
 import { INFO_PLANTA, TURNOS_PLANTA } from '../constants';
-import type { Turno } from '../types';
 import { useNavigate } from 'react-router-dom';
 
 interface TopHeaderProps {
@@ -26,15 +25,14 @@ interface TopHeaderProps {
 
 export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
   const { theme, toggleTheme } = useTheme();
-  const { notificaciones, turnoActivo, setTurnoActivo, marcarNotificacionLeida, marcarTodasNotificacionesLeidas } = useScrap();
+  const { notificaciones, turnoActivo, marcarNotificacionLeida, marcarTodasNotificacionesLeidas } = useScrap();
   const navigate = useNavigate();
 
   const [notifOpen, setNotifOpen] = useState(false);
-  const [shiftOpen, setShiftOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [horaActual, setHoraActual] = useState(() => new Date());
 
   const notifRef = useRef<HTMLDivElement>(null);
-  const shiftRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   const noLeidas = notificaciones.filter((n) => !n.leido).length;
@@ -45,15 +43,17 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setNotifOpen(false);
       }
-      if (shiftRef.current && !shiftRef.current.contains(e.target as Node)) {
-        setShiftOpen(false);
-      }
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setProfileOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    const intervalo = window.setInterval(() => setHoraActual(new Date()), 1000);
+    return () => window.clearInterval(intervalo);
   }, []);
 
   return (
@@ -83,47 +83,19 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
 
       {/* Lado Derecho: Turno Activo + Notificaciones + Tema + Usuario */}
       <div className="flex items-center gap-2 sm:gap-3">
-        {/* Selector de Turno Activo */}
-        <div className="relative" ref={shiftRef}>
-          <button
-            onClick={() => setShiftOpen(!shiftOpen)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors text-xs font-medium text-slate-700 dark:text-slate-200"
-          >
-            <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-            <span className="hidden md:inline font-medium">{turnoActivo}</span>
-            <span className="md:hidden font-mono">{turnoActivo.replace('Turno ', 'T-')}</span>
-            <ChevronDown className="w-3 h-3 text-slate-400" />
-          </button>
-
-          {shiftOpen && (
-            <div className="absolute right-0 mt-2 w-56 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl py-2 z-50 text-xs">
-              <div className="px-3 py-1.5 font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[10px] border-b border-slate-100 dark:border-slate-800">
-                Seleccionar Turno de Operación
-              </div>
-              {TURNOS_PLANTA.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => {
-                    setTurnoActivo(t.id);
-                    setShiftOpen(false);
-                  }}
-                  className={`w-full text-left px-3 py-2 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${
-                    turnoActivo === t.id
-                      ? 'text-blue-600 dark:text-blue-400 font-semibold bg-blue-50/50 dark:bg-blue-950/30'
-                      : 'text-slate-700 dark:text-slate-300'
-                  }`}
-                >
-                  <div className="flex flex-col">
-                    <span>{t.etiqueta}</span>
-                    <span className="text-[10px] text-slate-400">{t.horario}</span>
-                  </div>
-                  {turnoActivo === t.id && (
-                    <span className="w-2 h-2 rounded-full bg-blue-600 dark:bg-blue-400" />
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
+        {/* Turno calculado automáticamente según el reloj local */}
+        <div
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-200"
+          aria-live="polite"
+          title="El turno se determina automáticamente con la hora local de este equipo."
+        >
+          <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <div className="flex flex-col">
+            <span className="font-semibold">{turnoActivo}</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+              {TURNOS_PLANTA.find((turno) => turno.id === turnoActivo)?.horario} · {horaActual.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+            </span>
+          </div>
         </div>
 
         {/* Notificaciones */}

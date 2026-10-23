@@ -8,30 +8,21 @@ export interface MovimientoDB {
   cantidad: number;
   salida: boolean;
   retorno: boolean;
-  EmpleadoId?: string | null;
-  Empleado?: string | null;
+  EmpleadoId: string | null;
+  Empleado: string | null;
   procesado?: number | null;
   aprobado: number | null; // 0: Pendiente, 1: Aprobado, 2: Rechazado
-  RazonId?: number | null;
-  centro_costo?: string | null;
-  almacen?: string | null;
-  serial?: string | null;
-  MATNR_FG?: string | null;
-  nvAprobadoPor?: string | null;
-  dtAprobado?: string | Date | null;
+  RazonId: number | null;
+  centro_costo: string | null;
+  almacen: string | null;
+  serial: string | null;
+  MATNR_FG: string | null;
+  nvAprobadoPor: string | null;
+  dtAprobado: string | Date | null;
 }
 
 export interface MovimientoDetalleDTO extends MovimientoDB {
-  CertificacionNombre?: string;
-  Linea?: string;
-  Estacion?: string;
   MovimientoTipoNombre?: string;
-  RazonDescripcion?: string;
-  EstatusTexto: 'Pendiente' | 'Aprobado' | 'Rechazado';
-  fecha?: string;
-  hora?: string;
-  costoUnitarioEstimado?: number;
-  costoTotalEstimado?: number;
 }
 
 export interface MovimientoTipoDB {

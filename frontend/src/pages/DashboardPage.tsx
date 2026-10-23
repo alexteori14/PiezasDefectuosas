@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertOctagon,
   Clock,
@@ -21,8 +21,6 @@ import {
   BarChart,
   Bar,
   Cell,
-  PieChart,
-  Pie,
 } from 'recharts';
 import { useScrap } from '../context/ScrapContext';
 import { StatCard } from '../components/common/StatCard';
@@ -30,13 +28,17 @@ import { Card } from '../components/common/Card';
 import { Button } from '../components/common/Button';
 import { Badge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
-import { formatearMoneda, formatearNumero, descargarCSV } from '../utils/formatters';
+import { formatearNumero, descargarCSV } from '../utils/formatters';
 import { CATEGORIAS_MOTIVOS, LINEAS_PRODUCCION } from '../constants';
 import type { CategoriaMotivo } from '../types';
 
 export const DashboardPage: React.FC = () => {
-  const { movimientos, resumenKPIs, turnoActivo, crearMovimiento, razonesCatalogo } = useScrap();
+  const { movimientos, movimientosCargando, errorMovimientos, recargarMovimientos, turnoActivo, crearMovimiento } = useScrap();
   const navigate = useNavigate();
+  const movimientosDelPeriodo = movimientos;
+  const cargandoDashboard = movimientosCargando;
+  const errorDashboard = errorMovimientos;
+  const etiquetaPeriodo = 'todo 2025';
 
   // Modal para registro rápido
   const [modalRegistroAbierto, setModalRegistroAbierto] = useState(false);
@@ -57,35 +59,31 @@ export const DashboardPage: React.FC = () => {
   });
 
   // Datos para gráficas
-  const datosTendenciaHora = [
-    { hora: '06:00', scrapPzas: 4, limiteAlerta: 10 },
-    { hora: '07:00', scrapPzas: 14, limiteAlerta: 10 },
-    { hora: '08:00', scrapPzas: 8, limiteAlerta: 10 },
-    { hora: '09:00', scrapPzas: 12, limiteAlerta: 10 },
-    { hora: '10:00', scrapPzas: 5, limiteAlerta: 10 },
-    { hora: '11:00', scrapPzas: 9, limiteAlerta: 10 },
-    { hora: '12:00', scrapPzas: 18, limiteAlerta: 10 },
-    { hora: '13:00', scrapPzas: 7, limiteAlerta: 10 },
-  ];
+  const datosTendenciaHora = Object.values(
+    movimientosDelPeriodo.reduce<Record<string, { hora: string; scrapPzas: number }>>((acumulado, movimiento) => {
+      if (movimiento.movimientoTipoId === 1) {
+        const hora = `${movimiento.fecha} ${movimiento.hora}`;
+        acumulado[hora] = acumulado[hora] || { hora, scrapPzas: 0 };
+        acumulado[hora].scrapPzas += movimiento.cantidad;
+      }
+      return acumulado;
+    }, {})
+  ).sort((a, b) => a.hora.localeCompare(b.hora));
 
-  // Agrupar por líneas
-  const incidenciaPorLinea = LINEAS_PRODUCCION.map((linea) => {
-    const totalPzas = movimientos
-      .filter((m) => m.linea.includes(linea.codigo))
-      .reduce((sum, m) => sum + m.cantidad, 0);
-
-    return {
-      codigo: linea.codigo,
-      nombre: linea.nombre.split(' ')[1] || linea.codigo,
-      piezas: totalPzas,
-      metaMax: linea.metaScrapMaximo * 20,
-    };
-  }).sort((a, b) => b.piezas - a.piezas);
+  const incidenciaPorLinea = Object.values(
+    movimientosDelPeriodo.reduce<Record<string, { certificacion: string; piezas: number }>>((acumulado, movimiento) => {
+      const certificacion = String(movimiento.certificacionId);
+      acumulado[certificacion] = acumulado[certificacion] || { certificacion, piezas: 0 };
+      acumulado[certificacion].piezas += movimiento.cantidad;
+      return acumulado;
+    }, {})
+  ).sort((a, b) => b.piezas - a.piezas);
 
   // Top motivos de Scrap
   const motivosMap: Record<string, number> = {};
-  movimientos.forEach((m) => {
-    motivosMap[m.motivoEspecifico] = (motivosMap[m.motivoEspecifico] || 0) + m.cantidad;
+  movimientosDelPeriodo.forEach((m) => {
+    const razon = m.razonId === null ? 'Sin razón' : String(m.razonId);
+    motivosMap[razon] = (motivosMap[razon] || 0) + m.cantidad;
   });
 
   const topMotivosData = Object.entries(motivosMap)
@@ -97,7 +95,16 @@ export const DashboardPage: React.FC = () => {
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
-  const COLORES_PIE = ['#ef4444', '#f97316', '#f59e0b', '#3b82f6', '#8b5cf6'];
+  const COLORES_MOTIVOS = ['#ef4444', '#f97316', '#f59e0b', '#3b82f6', '#8b5cf6'];
+  const scrapPiezasPeriodo = useMemo(
+    () => movimientosDelPeriodo
+      .filter((movimiento) => movimiento.movimientoTipoId === 1)
+      .reduce((total, movimiento) => total + movimiento.cantidad, 0),
+    [movimientosDelPeriodo],
+  );
+  const pendientesPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 0).length;
+  const aprobadosPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 1).length;
+  const rechazadosPeriodo = movimientosDelPeriodo.filter((movimiento) => movimiento.aprobado === 2).length;
 
   const handleCrearSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -134,11 +141,14 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
+          <span className="rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-2 text-xs font-medium text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300">
+            Datos: 2025
+          </span>
           <Button
             variant="outline"
             size="sm"
             icon={<Download className="w-4 h-4" />}
-            onClick={() => descargarCSV(movimientos, `scrap-planta-${new Date().toISOString().slice(0, 10)}.csv`)}
+            onClick={() => descargarCSV(movimientosDelPeriodo, 'scrap-planta-2025.csv')}
           >
             Exportar CSV
           </Button>
@@ -147,6 +157,8 @@ export const DashboardPage: React.FC = () => {
             variant="primary"
             size="sm"
             icon={<PlusCircle className="w-4 h-4" />}
+            disabled
+            title="El alta de movimientos aún no está integrada con SQL Server."
             onClick={() => setModalRegistroAbierto(true)}
           >
             Registrar Incidencia
@@ -154,73 +166,76 @@ export const DashboardPage: React.FC = () => {
         </div>
       </div>
 
+      {errorDashboard && (
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
+          <span>No fue posible cargar datos de dbo.Movimientos: {errorDashboard}</span>
+          <button onClick={recargarMovimientos} className="font-semibold underline">
+            Reintentar
+          </button>
+        </div>
+      )}
+      {cargandoDashboard && <p className="text-xs text-slate-500">Consultando dbo.Movimientos para {etiquetaPeriodo}…</p>}
+
       {/* Tarjetas Principales de KPIs (Power BI & MES Style) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
-          titulo="Scrap Generado Hoy"
-          valor={`${formatearNumero(resumenKPIs.scrapHoyPzas)} Pzas`}
-          subvalor={`Costo estimado: ${formatearMoneda(resumenKPIs.scrapHoyCosto)}`}
+          titulo={`Piezas Scrap (${etiquetaPeriodo})`}
+          valor={`${formatearNumero(scrapPiezasPeriodo)} Pzas`}
+          subvalor="El costo no se calcula: no existe en los campos integrados."
           icono={<AlertOctagon className="w-6 h-6" />}
-          variacion={{
-            valor: `${resumenKPIs.tasaScrapGeneral}% OEE Loss`,
-            esPositiva: false,
-            etiqueta: 'vs meta de planta (1.0%)',
-          }}
           colorAccent="rose"
         />
 
         <StatCard
           titulo="Pendiente de Aprobar"
-          valor={`${resumenKPIs.pendientesAprobar} Folios`}
-          subvalor="Requiere firma de supervisor"
+          valor={`${pendientesPeriodo} Folios`}
+          subvalor="Conteo según campo aprobado de la tabla"
           icono={<Clock className="w-6 h-6" />}
           variacion={{
-            valor: 'Atención Requerida',
-            esPositiva: resumenKPIs.pendientesAprobar === 0,
-            etiqueta: 'Bandeja activa',
+            valor: 'Solo lectura',
+            esPositiva: pendientesPeriodo === 0,
+            etiqueta: 'Aprobación no integrada',
           }}
           colorAccent="amber"
           onClick={() => navigate('/aprobaciones')}
         />
 
         <StatCard
-          titulo="Scrap Aprobado Hoy"
-          valor={`${resumenKPIs.aprobadosHoy} Folios`}
-          subvalor="Transferido a ALM-99 / SAP 551"
+          titulo="Scrap aprobado (histórico)"
+          valor={`${aprobadosPeriodo} Folios`}
+          subvalor="Estado leído desde dbo.Movimientos"
           icono={<CheckCircle2 className="w-6 h-6" />}
           variacion={{
-            valor: '100% Trazable',
+            valor: 'SQL Server',
             esPositiva: true,
-            etiqueta: 'Contabilizado',
+            etiqueta: 'Lectura directa',
           }}
           colorAccent="emerald"
         />
 
         <StatCard
-          titulo="Scrap Rechazado / Recuperado"
-          valor={`${resumenKPIs.rechazadosHoy} Folios`}
-          subvalor="Canalizado a Retrabajo / NDT"
+          titulo="Scrap rechazado (histórico)"
+          valor={`${rechazadosPeriodo} Folios`}
+          subvalor="Estado leído desde dbo.Movimientos"
           icono={<XCircle className="w-6 h-6" />}
           variacion={{
-            valor: 'Material Salvado',
+            valor: 'SQL Server',
             esPositiva: true,
-            etiqueta: 'Ahorro de chatarra',
+            etiqueta: 'Lectura directa',
           }}
           colorAccent="blue"
         />
       </div>
 
-      {/* Gráficas: Tendencia por Hora + Pareto Top Motivos */}
+      {/* Gráficas: Tendencia por Hora + distribución de motivos */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Gráfica de Tendencia por Hora */}
         <Card
-          title="Tendencia de Generación de Scrap por Hora (Turno Activo)"
-          subtitle="Comportamiento horario contra límite admisible por estación"
+          title="Piezas Scrap por fecha y hora"
+          subtitle="Agrupación basada en fecha_hora y cantidad de dbo.Movimientos"
           className="lg:col-span-2"
           action={
-            <span className="text-xs font-mono font-medium text-slate-500">
-              Límite admisible: 10 pz/h
-            </span>
+            <span className="text-xs font-mono font-medium text-slate-500">Datos SQL</span>
           }
         >
           <div className="h-72 w-full pt-2">
@@ -258,28 +273,29 @@ export const DashboardPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* Top Motivos de Scrap (Donut Pareto) */}
+        {/* Distribución de piezas por motivo */}
         <Card
-          title="Top Motivos de Scrap"
-          subtitle="Pareto de defectos registrados en planta"
+          title="Top razones de Scrap"
+          subtitle="Agrupación por RazonId; el catálogo de descripciones no está conectado"
           className="lg:col-span-1"
         >
-          <div className="h-72 w-full flex flex-col items-center justify-center">
-            <ResponsiveContainer width="100%" height="75%">
-              <PieChart>
-                <Pie
-                  data={topMotivosData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={4}
-                  dataKey="value"
-                >
-                  {topMotivosData.map((_, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORES_PIE[index % COLORES_PIE.length]} />
-                  ))}
-                </Pie>
+          <div className="h-72 w-full pt-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={topMotivosData}
+                layout="vertical"
+                margin={{ top: 4, right: 12, left: 4, bottom: 4 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#cbd5e1" strokeOpacity={0.4} />
+                <XAxis type="number" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis
+                  type="category"
+                  dataKey="name"
+                  width={76}
+                  tick={{ fontSize: 10, fill: '#64748b' }}
+                  axisLine={false}
+                  tickLine={false}
+                />
                 <Tooltip
                   formatter={(value: any, name: any, item: any) => [
                     `${value} Pzas`,
@@ -293,28 +309,13 @@ export const DashboardPage: React.FC = () => {
                     fontSize: '11px',
                   }}
                 />
-              </PieChart>
+                <Bar dataKey="value" name="Piezas" radius={[0, 6, 6, 0]}>
+                  {topMotivosData.map((_, index) => (
+                    <Cell key={`motivo-${index}`} fill={COLORES_MOTIVOS[index % COLORES_MOTIVOS.length]} />
+                  ))}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
-
-            {/* Leyenda personalizada compacta */}
-            <div className="w-full space-y-1.5 px-2">
-              {topMotivosData.slice(0, 3).map((item, i) => (
-                <div key={item.name} className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 truncate">
-                    <span
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: COLORES_PIE[i % COLORES_PIE.length] }}
-                    />
-                    <span className="truncate text-slate-600 dark:text-slate-300">
-                      {item.nombreCompleto}
-                    </span>
-                  </div>
-                  <span className="font-mono font-semibold text-slate-800 dark:text-slate-200 ml-2">
-                    {item.value} pz
-                  </span>
-                </div>
-              ))}
-            </div>
           </div>
         </Card>
       </div>
@@ -323,15 +324,15 @@ export const DashboardPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Líneas con más incidencias */}
         <Card
-          title="Líneas con Mayor Incidencia de Defectos"
-          subtitle="Piezas acumuladas durante el periodo operativo"
+          title="Piezas por certificación"
+          subtitle="Agrupación por CertificacionId de dbo.Movimientos"
           className="lg:col-span-2"
         >
           <div className="h-64 w-full pt-1">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={incidenciaPorLinea} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#cbd5e1" strokeOpacity={0.4} />
-                <XAxis dataKey="codigo" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="certificacion" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <Tooltip
                   contentStyle={{
@@ -371,7 +372,7 @@ export const DashboardPage: React.FC = () => {
           }
         >
           <div className="divide-y divide-slate-100 dark:divide-slate-800">
-            {movimientos.slice(0, 4).map((mov) => (
+            {movimientosDelPeriodo.slice(0, 4).map((mov) => (
               <div
                 key={mov.id}
                 onClick={() => navigate(`/movimientos/${mov.id}`)}
@@ -385,16 +386,16 @@ export const DashboardPage: React.FC = () => {
                     <Badge estatus={mov.estatus} size="sm" />
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 truncate mt-0.5">
-                    {mov.matnr} - {mov.descripcion}
+                    {mov.matnr}{mov.matnrFg ? ` • ${mov.matnrFg}` : ''}
                   </p>
                   <span className="text-[10px] text-slate-400">
-                    {mov.linea.split(' ')[0]} • {mov.cantidad} {mov.unidad} • {mov.hora}
+                    Certificación {mov.certificacionId} • {mov.cantidad} pza • {mov.fecha} {mov.hora}
                   </span>
                 </div>
 
                 <div className="text-right shrink-0">
                   <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 block">
-                    {formatearMoneda(mov.costoTotal)}
+                    {mov.serial || 'Sin serial'}
                   </span>
                   <span className="text-[10px] text-slate-400">{mov.movimientoTipo}</span>
                 </div>

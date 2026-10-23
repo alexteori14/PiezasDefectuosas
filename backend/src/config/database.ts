@@ -20,25 +20,23 @@ export interface DbConfigInfo {
 }
 
 export function getDbStatus(): DbConfigInfo {
+  const conexion = obtenerEstadoConexion();
   return {
-    motor: 'SQL Server Management Studio (SSMS)',
+    motor: 'SQL Server',
     tablaPrincipal: 'dbo.Movimientos',
     tablasRelacionadas: ['dbo.MovimientoTipo', 'dbo.EtiquetasCI', 'dbo.Certificaciones'],
-    modo: 'Estructura Adaptada (Listo para conexión directa vía database.connection.ts)',
+    modo: `Conexión ${conexion.autenticacion} configurada`,
     rutaScripts: 'BaseDeDatos/',
-    archivoConexion: 'backend/src/config/database.connection.ts',
+    archivoConexion: 'BaseDeDatos/.env',
   };
 }
 
 export function isDbConnected(): boolean {
-  return false;
+  return obtenerEstadoConexion().conectado;
 }
 
 export async function connectToDatabase() {
-  console.log('ℹ️ [Base de Datos] Estructura adaptada al 100% con dbo.Movimientos.');
-  console.log('ℹ️ [Base de Datos] Archivo exclusivo de conexión listo en: backend/src/config/database.connection.ts');
-  console.log('ℹ️ [Base de Datos] Para probar la conexión en vivo ejecuta: npm run test:db');
-  return null;
+  return conectarSQLServer();
 }
 
 export {
