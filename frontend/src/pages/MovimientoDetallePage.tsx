@@ -7,6 +7,10 @@ import {
   Printer,
   ShieldCheck,
   User,
+  Database,
+  Tag,
+  Factory,
+  Layers,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import { Button } from '../components/common/Button';
@@ -24,7 +28,7 @@ export const MovimientoDetallePage: React.FC = () => {
   const [modalRechazarAbierto, setModalRechazarAbierto] = useState(false);
   const [comentarios, setComentarios] = useState('');
 
-  const movimiento = movimientos.find((m) => m.id === id);
+  const movimiento = movimientos.find((m) => m.id === id || m.serial === id);
 
   if (!movimiento) {
     return (
@@ -33,7 +37,7 @@ export const MovimientoDetallePage: React.FC = () => {
           Movimiento no encontrado
         </h2>
         <p className="text-sm text-slate-500">
-          El folio {id} no existe o fue retirado del sistema.
+          El folio #{id} no existe o no se encuentra registrado en dbo.Movimientos.
         </p>
         <Button variant="primary" onClick={() => navigate('/movimientos')}>
           Volver a Movimientos
@@ -70,12 +74,15 @@ export const MovimientoDetallePage: React.FC = () => {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-xl sm:text-2xl font-bold font-mono tracking-tight text-slate-900 dark:text-white">
-                {movimiento.id}
+                Movimiento #{movimiento.id}
               </h1>
+              <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                Serial: {movimiento.serial}
+              </span>
               <Badge estatus={movimiento.estatus} size="md" />
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Trazabilidad 360° • Registro en Terminal MES & SAP S/4HANA
+              Registro sincronizado con tabla <code className="font-mono text-blue-600 dark:text-blue-400">dbo.Movimientos</code> (SSMS) • Trazabilidad 360°
             </p>
           </div>
         </div>
@@ -86,12 +93,12 @@ export const MovimientoDetallePage: React.FC = () => {
             variant="outline"
             size="sm"
             icon={<Printer className="w-4 h-4" />}
-            onClick={() => simularImpresionPDF(`Marbete_${movimiento.id}`)}
+            onClick={() => simularImpresionPDF(`Marbete_${movimiento.serial || movimiento.id}`)}
           >
             Imprimir Marbete
           </Button>
 
-          {movimiento.estatus === 'Pendiente' && (
+          {movimiento.aprobado === 0 && (
             <>
               <Button
                 variant="success"
@@ -99,7 +106,7 @@ export const MovimientoDetallePage: React.FC = () => {
                 icon={<CheckCircle className="w-4 h-4" />}
                 onClick={() => setModalAprobarAbierto(true)}
               >
-                Aprobar Scrap
+                Aprobar (aprobado = 1)
               </Button>
 
               <Button
@@ -108,19 +115,19 @@ export const MovimientoDetallePage: React.FC = () => {
                 icon={<XCircle className="w-4 h-4" />}
                 onClick={() => setModalRechazarAbierto(true)}
               >
-                Rechazar
+                Rechazar (aprobado = 2)
               </Button>
             </>
           )}
         </div>
       </div>
 
-      {/* Banner de Estado Actual */}
+      {/* Banner de Estado de Dictamen */}
       <div
         className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
-          movimiento.estatus === 'Aprobado'
+          movimiento.aprobado === 1
             ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-            : movimiento.estatus === 'Rechazado'
+            : movimiento.aprobado === 2
             ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200'
             : 'bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200'
         }`}
@@ -129,15 +136,15 @@ export const MovimientoDetallePage: React.FC = () => {
           <ShieldCheck className="w-6 h-6 shrink-0" />
           <div>
             <h4 className="font-semibold text-xs sm:text-sm">
-              Estatus Actual: {movimiento.estatus}
+              Dictamen SSMS: {movimiento.aprobado === 1 ? 'Aprobado (aprobado = 1)' : movimiento.aprobado === 2 ? 'Rechazado (aprobado = 2)' : 'Pendiente (aprobado = 0)'}
             </h4>
             <p className="text-xs opacity-90">
-              {movimiento.estatus === 'Aprobado' &&
-                `Autorizado por ${movimiento.aprobadoPor || 'Supervisor de Calidad'} el ${movimiento.fechaAprobacion || movimiento.fecha}.`}
-              {movimiento.estatus === 'Rechazado' &&
-                `Rechazado por ${movimiento.aprobadoPor || 'Supervisor de Calidad'}. Material recuperable.`}
-              {movimiento.estatus === 'Pendiente' &&
-                'En espera de firma digital del supervisor de calidad para ajuste de inventario en SAP.'}
+              {movimiento.aprobado === 1 &&
+                `Dictaminado por ${movimiento.nvAprobadoPor || 'Supervisor de Calidad'} el ${movimiento.dtAprobado || movimiento.fechaHora}.`}
+              {movimiento.aprobado === 2 &&
+                `Rechazado por ${movimiento.nvAprobadoPor || 'Supervisor de Calidad'}. Desviado a bahía de retrabajo.`}
+              {movimiento.aprobado === 0 &&
+                'En espera de firma digital del supervisor de calidad para contabilización en SAP S/4HANA.'}
             </p>
           </div>
         </div>
@@ -149,303 +156,314 @@ export const MovimientoDetallePage: React.FC = () => {
         )}
       </div>
 
-      {/* Grid de Contenido: Ficha Técnica + Marbete Viajero */}
+      {/* Grid de Contenido */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Ficha Técnica y Datos Maestros */}
+        {/* Columna Izquierda: Ficha Técnica + Estructura de Base de Datos */}
         <div className="lg:col-span-2 space-y-6">
-          <Card title="Ficha Técnica del Material & Registro de Defecto">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                <span className="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">
-                  Número de Parte SAP (MATNR)
+          {/* Card: Correspondencia directa con tabla dbo.Movimientos */}
+          <Card
+            title="Estructura de Base de Datos (dbo.Movimientos)"
+            subtitle="Representación exacta de las columnas de SQL Server Management Studio"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 text-xs">
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">id (PK, int)</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-100">{movimiento.id}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">CertificacionId (FK)</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
+                  {movimiento.certificacionId}
                 </span>
-                <span className="text-base font-bold font-mono text-blue-600 dark:text-blue-400 mt-1 block">
-                  {movimiento.matnr}
-                </span>
-                <span className="text-xs font-medium text-slate-700 dark:text-slate-300 mt-0.5 block">
-                  {movimiento.descripcion}
+                <span className="text-[10px] text-slate-400 block truncate">{movimiento.certificacionNombre}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">MATNR (varchar 50)</span>
+                <span className="font-mono font-bold text-blue-600 dark:text-blue-400">{movimiento.matnr}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">MATNR_FG (varchar 50)</span>
+                <span className="font-mono font-semibold text-indigo-600 dark:text-indigo-400">
+                  {movimiento.matnrFg || 'N/A'}
                 </span>
               </div>
 
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                <span className="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">
-                  Volumen & Costo Total
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">fecha_hora (datetime)</span>
+                <span className="text-slate-800 dark:text-slate-200 font-medium">{movimiento.fechaHora}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">credencial (varchar 50)</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{movimiento.credencial}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">MovimientoTipoId (FK)</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {movimiento.movimientoTipoId} ({movimiento.movimientoTipo})
                 </span>
-                <span className="text-base font-bold font-mono text-slate-900 dark:text-white mt-1 block">
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">cantidad (int)</span>
+                <span className="font-mono font-bold text-base text-slate-900 dark:text-white">
                   {movimiento.cantidad} {movimiento.unidad}
                 </span>
-                <span className="text-xs font-mono text-rose-600 dark:text-rose-400 mt-0.5 block font-semibold">
-                  Costo: {formatearMoneda(movimiento.costoTotal)} ({formatearMoneda(movimiento.costoUnitario)} / u)
-                </span>
               </div>
 
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                <span className="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">
-                  Origen y Línea
-                </span>
-                <span className="text-xs font-semibold text-slate-900 dark:text-white mt-1 block">
-                  {movimiento.linea}
-                </span>
-                <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  Turno: {movimiento.turno} • Fecha: {movimiento.fecha} {movimiento.hora}
-                </span>
-              </div>
-
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                <span className="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">
-                  Logística de Almacenes
-                </span>
-                <span className="text-xs font-semibold text-slate-900 dark:text-white mt-1 block">
-                  Salida: {movimiento.almacenSalida}
-                </span>
-                <span className="text-[11px] text-slate-500 mt-0.5 block">
-                  Destino: {movimiento.almacenRetorno} ({movimiento.almacen})
-                </span>
-              </div>
-
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                <span className="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">
-                  Orden de Producción (OP)
-                </span>
-                <span className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 mt-1 block">
-                  {movimiento.ordenProduccion || 'OP-S4HANA-GEN'}
-                </span>
-                <span className="text-[11px] text-slate-400 font-mono mt-0.5 block">
-                  Lote: {movimiento.lote || 'N/A'}
-                </span>
-              </div>
-
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
-                <span className="text-[11px] text-slate-400 block uppercase tracking-wider font-semibold">
-                  Personal Operativo Responsable
-                </span>
-                <span className="text-xs font-semibold text-slate-900 dark:text-white mt-1 block">
-                  {movimiento.empleado}
-                </span>
-                <span className="text-[11px] text-slate-400 font-mono mt-0.5 block">
-                  Credencial: {movimiento.credencial}
-                </span>
-              </div>
-            </div>
-
-            {/* Clasificación de Causa Raíz */}
-            <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
-              <div>
-                <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
-                  Tipo de Movimiento & Motivo Específico
-                </h4>
-                <div className="mt-2 flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded bg-blue-100 dark:bg-blue-900/50 text-blue-800 dark:text-blue-300 font-medium text-xs">
-                    {movimiento.movimientoTipo}
-                  </span>
-                  <span className="text-xs font-semibold text-slate-800 dark:text-slate-200">
-                    {movimiento.motivoEspecifico}
-                  </span>
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">RazonId (EtiquetasCI)</span>
+                <div className="flex items-center gap-1 font-semibold text-amber-600 dark:text-amber-400">
+                  <Tag className="w-3 h-3" />
+                  <span>{movimiento.razonId}</span>
                 </div>
+                <span className="text-[10px] text-slate-400 block truncate">{movimiento.motivoEspecifico}</span>
               </div>
 
-              {movimiento.observaciones && (
-                <div>
-                  <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    Observaciones Detalladas en Piso
-                  </h4>
-                  <p className="mt-1 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/80 text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                    {movimiento.observaciones}
-                  </p>
-                </div>
-              )}
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">almacen (varchar 50)</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{movimiento.almacen}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">serial (varchar 50)</span>
+                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{movimiento.serial}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">centro_costo (varchar 50)</span>
+                <span className="font-mono text-slate-700 dark:text-slate-300">{movimiento.centroCosto || 'N/A'}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">Empleado (varchar 250)</span>
+                <span className="text-slate-800 dark:text-slate-200 font-medium truncate block">{movimiento.empleado}</span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">aprobado (int)</span>
+                <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
+                  {movimiento.aprobado} ({movimiento.estatus})
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">nvAprobadoPor (nvarchar)</span>
+                <span className="text-slate-800 dark:text-slate-200 truncate block">
+                  {movimiento.nvAprobadoPor || 'Pendiente'}
+                </span>
+              </div>
+
+              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800">
+                <span className="text-[10px] text-slate-400 block font-mono">dtAprobado (datetime)</span>
+                <span className="text-slate-800 dark:text-slate-200">
+                  {movimiento.dtAprobado || 'Pendiente'}
+                </span>
+              </div>
             </div>
           </Card>
 
-          {/* Historial Visual / Timeline Cronológico */}
-          <Card
-            title="Timeline de Trazabilidad e Historial del Movimiento"
-            subtitle="Registro inmutable de eventos conforme a norma IATF 16949"
-          >
-            <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
-              {movimiento.historial && movimiento.historial.length > 0 ? (
-                movimiento.historial.map((hito, idx) => {
-                  const esCompletado = hito.estado === 'completado';
-                  const esActual = hito.estado === 'actual';
-                  const esRechazado = hito.estado === 'rechazado';
+          {/* Historial y Auditoría Cronológica */}
+          <Card title="Trazabilidad y Línea de Vida (IATF 16949)">
+            <div className="space-y-4">
+              {movimiento.historial?.map((hito, idx) => (
+                <div key={hito.id || idx} className="flex gap-3 text-xs">
+                  <div className="flex flex-col items-center">
+                    <div
+                      className={`w-3 h-3 rounded-full mt-1 ${
+                        hito.estado === 'completado'
+                          ? 'bg-emerald-500'
+                          : hito.estado === 'rechazado'
+                          ? 'bg-rose-500'
+                          : 'bg-amber-500'
+                      }`}
+                    />
+                    {idx < (movimiento.historial?.length || 0) - 1 && (
+                      <div className="w-0.5 flex-1 bg-slate-200 dark:bg-slate-800 my-1" />
+                    )}
+                  </div>
 
-                  return (
-                    <div key={hito.id || idx} className="relative group">
-                      {/* Nodo del timeline */}
-                      <span
-                        className={`absolute -left-[27px] top-1 w-4 h-4 rounded-full border-2 bg-white dark:bg-slate-900 transition-colors ${
-                          esCompletado
-                            ? 'border-emerald-500 bg-emerald-500'
-                            : esRechazado
-                            ? 'border-rose-500 bg-rose-500'
-                            : esActual
-                            ? 'border-blue-500 bg-blue-500 animate-pulse'
-                            : 'border-slate-300 dark:border-slate-700'
-                        }`}
-                      />
-
-                      <div className="bg-slate-50 dark:bg-slate-800/50 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                          <h4 className="text-xs font-bold text-slate-900 dark:text-white">
-                            {hito.titulo}
-                          </h4>
-                          <span className="text-[10px] font-mono text-slate-400">
-                            {hito.fechaHora}
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-                          {hito.descripcion}
-                        </p>
-
-                        <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-400">
-                          <User className="w-3 h-3 text-slate-400" />
-                          <span>
-                            {hito.usuario} ({hito.rol})
-                          </span>
-                        </div>
-                      </div>
+                  <div className="flex-1 pb-4">
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {hito.titulo}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {hito.fechaHora}
+                      </span>
                     </div>
-                  );
-                })
-              ) : (
-                <p className="text-xs text-slate-400">
-                  Sin eventos adicionales registrados.
-                </p>
-              )}
+                    <p className="text-slate-600 dark:text-slate-400 mt-1">
+                      {hito.descripcion}
+                    </p>
+                    <div className="text-[11px] text-slate-500 mt-0.5">
+                      Responsable: <span className="font-medium text-slate-700 dark:text-slate-300">{hito.usuario}</span> ({hito.rol})
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </Card>
         </div>
 
-        {/* Marbete Viajero / Etiqueta de Contención Física */}
-        <div className="lg:col-span-1 space-y-6">
-          <div className="bg-white dark:bg-slate-900 border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-2xl p-5 shadow-sm space-y-4">
-            <div className="text-center pb-3 border-b border-slate-200 dark:border-slate-800">
-              <span className="text-[10px] font-mono tracking-widest text-slate-400 uppercase block">
-                MAGNA EXTERIORS & BODY
-              </span>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-wider uppercase mt-0.5">
-                MARBETE DE SCRAP / NO CONFORME
-              </h3>
-              <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 tracking-widest block mt-0.5">
-                BLOQUEO DE CALIDAD MES
-              </span>
-            </div>
+        {/* Columna Derecha: Marbete Viajero Físico Simulado */}
+        <div className="space-y-6">
+          <Card title="Marbete Viajero de Planta (Etiqueta Física)">
+            <div className="p-4 bg-amber-50/50 dark:bg-slate-800/80 rounded-xl border border-dashed border-amber-300 dark:border-slate-700 font-mono text-xs space-y-4 shadow-inner">
+              {/* Encabezado del Marbete */}
+              <div className="text-center border-b border-dashed border-slate-300 dark:border-slate-700 pb-3">
+                <span className="text-[10px] tracking-widest uppercase font-bold text-slate-500 block">
+                  MAGNA EXTERIORS & STAMPING
+                </span>
+                <span className="text-sm font-black text-slate-900 dark:text-white block mt-0.5">
+                  MATERIAL NO CONFORME / SCRAP
+                </span>
+                <span className="text-[11px] text-blue-600 dark:text-blue-400 font-bold block">
+                  SERIAL: {movimiento.serial}
+                </span>
+              </div>
 
-            {/* Código de barras simulado de alta fidelidad */}
-            <div className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800 rounded-xl">
-              <div className="flex items-center gap-0.5 h-12 w-full justify-center">
-                {[2, 4, 1, 3, 5, 2, 1, 4, 2, 3, 1, 4, 2, 5, 1, 3, 2, 4, 1, 3, 5, 2, 1, 3].map((w, i) => (
-                  <div
-                    key={i}
-                    style={{ width: `${w * 1.5}px` }}
-                    className="h-full bg-slate-900 dark:bg-slate-200"
-                  />
-                ))}
+              {/* Contenido Principal */}
+              <div className="space-y-2 text-[11px]">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">ID BD:</span>
+                  <span className="font-bold">#{movimiento.id}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">MATNR (Parte):</span>
+                  <span className="font-bold text-blue-600 dark:text-blue-400">{movimiento.matnr}</span>
+                </div>
+                {movimiento.matnrFg && (
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">MATNR_FG:</span>
+                    <span className="font-semibold text-indigo-600 dark:text-indigo-400">{movimiento.matnrFg}</span>
+                  </div>
+                )}
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Estación Cert.:</span>
+                  <span className="font-bold">ID {movimiento.certificacionId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Tipo:</span>
+                  <span className="font-bold">{movimiento.movimientoTipoId} - {movimiento.movimientoTipo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Razón (Falla):</span>
+                  <span className="font-bold text-amber-600 dark:text-amber-400">
+                    {movimiento.razonId} - {movimiento.motivoEspecifico}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Cantidad:</span>
+                  <span className="font-bold text-sm text-slate-900 dark:text-white">
+                    {movimiento.cantidad} {movimiento.unidad}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Almacén Dest.:</span>
+                  <span className="font-bold">{movimiento.almacen}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Credencial:</span>
+                  <span>{movimiento.credencial} ({movimiento.empleado})</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Fecha/Hora:</span>
+                  <span>{movimiento.fechaHora}</span>
+                </div>
               </div>
-              <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300 mt-1 tracking-widest">
-                *{movimiento.id}*
-              </span>
-            </div>
 
-            {/* Resumen del Marbete */}
-            <div className="space-y-2 text-xs divide-y divide-slate-100 dark:divide-slate-800 font-mono">
-              <div className="flex justify-between pt-1">
-                <span className="text-slate-400 font-sans">MATNR:</span>
-                <span className="font-bold text-slate-900 dark:text-white">{movimiento.matnr}</span>
-              </div>
-              <div className="flex justify-between pt-1">
-                <span className="text-slate-400 font-sans">CANTIDAD:</span>
-                <span className="font-bold text-rose-600">{movimiento.cantidad} {movimiento.unidad}</span>
-              </div>
-              <div className="flex justify-between pt-1">
-                <span className="text-slate-400 font-sans">LÍNEA:</span>
-                <span className="font-semibold text-slate-700 dark:text-slate-300">{movimiento.linea.split(' ')[0]}</span>
-              </div>
-              <div className="flex justify-between pt-1">
-                <span className="text-slate-400 font-sans">TURNO:</span>
-                <span className="text-slate-700 dark:text-slate-300">{movimiento.turno}</span>
-              </div>
-              <div className="flex justify-between pt-1">
-                <span className="text-slate-400 font-sans">MOTIVO:</span>
-                <span className="text-right text-[11px] font-sans truncate max-w-[150px]">{movimiento.motivoEspecifico}</span>
+              {/* Código de Barras Simulado */}
+              <div className="border-t border-dashed border-slate-300 dark:border-slate-700 pt-3 text-center space-y-1">
+                <div className="h-10 bg-slate-900 dark:bg-white flex items-center justify-center rounded-xs px-2">
+                  <div className="flex items-center gap-0.5 h-7 w-full justify-center overflow-hidden">
+                    {Array.from({ length: 42 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`h-full ${i % 3 === 0 ? 'w-1' : i % 2 === 0 ? 'w-0.5' : 'w-1.5'} ${
+                          i % 4 === 0 ? 'bg-transparent' : 'bg-white dark:bg-slate-900'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <span className="text-[10px] tracking-wider text-slate-500 block">
+                  *{movimiento.serial}*
+                </span>
               </div>
             </div>
-
-            {/* Firma digital */}
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-800 text-center">
-              <div className="h-10 flex items-center justify-center italic text-blue-600 dark:text-blue-400 font-serif text-sm">
-                {movimiento.aprobadoPor || 'Pendiente de Firma'}
-              </div>
-              <div className="border-t border-slate-300 dark:border-slate-700 pt-1 text-[10px] text-slate-400 font-sans">
-                Firma Autorizada Auditor / Supervisor
-              </div>
-            </div>
-          </div>
+          </Card>
         </div>
       </div>
 
-      {/* MODAL DE APROBACIÓN */}
+      {/* Modal de Aprobación */}
       <Modal
         isOpen={modalAprobarAbierto}
         onClose={() => setModalAprobarAbierto(false)}
-        title="Autorizar Scrap y Registro Contable"
-        subtitle={`Folio ${movimiento.id}`}
-        maxWidth="md"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setModalAprobarAbierto(false)}>
+        title="Aprobar Movimiento en Base de Datos"
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-slate-600 dark:text-slate-300">
+            Se registrará en la tabla <code className="font-mono text-blue-600">dbo.Movimientos</code> el valor{' '}
+            <strong className="text-emerald-600">aprobado = 1</strong> para el folio serial <strong>{movimiento.serial}</strong>.
+          </p>
+          <div>
+            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Observaciones / Justificación de Calidad
+            </label>
+            <textarea
+              rows={3}
+              value={comentarios}
+              onChange={(e) => setComentarios(e.target.value)}
+              placeholder="Aprobado conforme a GD&T y disposición de chatarra..."
+              className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setModalAprobarAbierto(false)}>
               Cancelar
             </Button>
-            <Button variant="success" icon={<CheckCircle className="w-4 h-4" />} onClick={handleAprobar}>
-              Aprobar Definitivo
+            <Button variant="success" onClick={handleAprobar}>
+              Confirmar y Autorizar (aprobado = 1)
             </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 text-xs">
-          <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-            Está a punto de autorizar la salida contable de <strong>{movimiento.cantidad} {movimiento.unidad}</strong> de <strong>{movimiento.matnr}</strong> hacia el patio de scrap.
-          </p>
-          <textarea
-            rows={3}
-            value={comentarios}
-            onChange={(e) => setComentarios(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-            placeholder="Comentarios u observaciones de calidad..."
-          />
+          </div>
         </div>
       </Modal>
 
-      {/* MODAL DE RECHAZO */}
+      {/* Modal de Rechazo */}
       <Modal
         isOpen={modalRechazarAbierto}
         onClose={() => setModalRechazarAbierto(false)}
-        title="Rechazar Declaración de Scrap"
-        subtitle={`Folio ${movimiento.id}`}
-        maxWidth="md"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setModalRechazarAbierto(false)}>
+        title="Rechazar Solicitud de Scrap"
+      >
+        <div className="space-y-4 text-xs">
+          <p className="text-slate-600 dark:text-slate-300">
+            Se registrará en <code className="font-mono text-blue-600">dbo.Movimientos</code> el valor{' '}
+            <strong className="text-rose-600">aprobado = 2</strong> y el material será desviado de scrap contable a retrabajo.
+          </p>
+          <div>
+            <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
+              Motivo Técnico de Rechazo
+            </label>
+            <textarea
+              rows={3}
+              value={comentarios}
+              onChange={(e) => setComentarios(e.target.value)}
+              placeholder="Pieza recuperable con rectificado en bahía de retrabajo ALM-12..."
+              className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="ghost" onClick={() => setModalRechazarAbierto(false)}>
               Cancelar
             </Button>
-            <Button variant="danger" icon={<XCircle className="w-4 h-4" />} onClick={handleRechazar}>
-              Rechazar Solicitud
+            <Button variant="danger" onClick={handleRechazar}>
+              Confirmar Rechazo (aprobado = 2)
             </Button>
-          </>
-        }
-      >
-        <div className="space-y-3 text-xs">
-          <p className="text-slate-600 dark:text-slate-300 leading-relaxed">
-            Indique la justificación técnica por la cual no se autoriza la destrucción de estas piezas.
-          </p>
-          <textarea
-            rows={3}
-            value={comentarios}
-            onChange={(e) => setComentarios(e.target.value)}
-            className="w-full px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-rose-500 focus:outline-none"
-            placeholder="Ej. Pieza salvable mediante estirado térmico..."
-          />
+          </div>
         </div>
       </Modal>
     </div>

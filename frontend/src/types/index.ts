@@ -2,22 +2,59 @@ export type EstatusMovimiento = 'Pendiente' | 'Aprobado' | 'Rechazado' | 'En Cua
 
 export type CategoriaMotivo = 
   | 'Scrap'
-  | 'Retrabajo en Línea'
+  | 'Retrabajo en Linea'
   | 'Calidad'
   | 'Cuarentena'
   | 'Calidad Reingreso'
-  | 'Metal Finish'
+  | 'metal Finish'
   | 'Traspaleo'
-  | 'Impresión Parcial'
+  | 'Impresion Parcial'
   | 'Reingreso Parcial';
 
 export type SeveridadMotivo = 'Crítica' | 'Alta' | 'Media' | 'Baja';
 
 export type Turno = 'Turno 1' | 'Turno 2' | 'Turno 3';
 
+/**
+ * Representa una Razón de falla o scrap en dbo.EtiquetasCI
+ */
+export interface RazonCatalogo {
+  id?: number;
+  idMovimiento?: number | null;
+  idRazon: number;
+  descripcion: string;
+  ccSugerido?: string | null;
+  notifica?: string | null;
+  puntaCola?: string | null;
+  activo?: boolean;
+}
+
+/**
+ * Representa un Tipo de Movimiento en dbo.MovimientoTipo
+ */
+export interface MovimientoTipoCatalogo {
+  id: number;
+  nombre: CategoriaMotivo;
+  descripcion?: string | null;
+  activo: boolean;
+}
+
+/**
+ * Representa una estación de certificación / impresión en dbo.Certificaciones
+ */
+export interface CertificacionCatalogo {
+  id: number;
+  nombre: string;
+  linea?: string;
+  estacion?: string;
+  ubicacion?: string;
+  activo: boolean;
+}
+
 export interface Motivo {
   id: string;
   codigo: string;
+  razonId: number;
   nombre: string;
   categoria: CategoriaMotivo;
   descripcion: string;
@@ -36,31 +73,50 @@ export interface HitoHistorial {
   estado: 'completado' | 'actual' | 'pendiente' | 'rechazado';
 }
 
+/**
+ * Modelo de Movimiento alineado a la tabla dbo.Movimientos de SQL Server Management Studio
+ */
 export interface Movimiento {
-  id: string;
-  matnr: string;
-  descripcion: string;
+  // Columnas exactas de dbo.Movimientos
+  id: string; // id PK
+  certificacionId: number; // CertificacionId (FK)
+  certificacionNombre?: string;
+  matnr: string; // MATNR (varchar 50)
+  fechaHora: string; // fecha_hora (datetime)
+  credencial: string; // credencial (varchar 50)
+  movimientoTipoId: number; // MovimientoTipoId (FK) (1..8)
+  movimientoTipo: CategoriaMotivo;
+  cantidad: number; // cantidad (int)
+  salida?: boolean; // salida (bit)
+  retorno?: boolean; // retorno (bit)
+  empleadoId?: string; // EmpleadoId (varchar 50)
+  empleado: string; // Empleado (varchar 250)
+  procesado?: number; // procesado (int)
+  aprobado: number; // aprobado (int: 0=Pendiente, 1=Aprobado, 2=Rechazado)
+  razonId: number; // RazonId (int) -> dbo.EtiquetasCI
+  motivoEspecifico: string; // Descripción de la Razón
+  centroCosto?: string; // centro_costo (varchar 50)
+  almacen: string; // almacen (varchar 50)
+  serial: string; // serial (varchar 50) -> Etiqueta impresa
+  matnrFg?: string; // MATNR_FG (varchar 50)
+  nvAprobadoPor?: string; // nvAprobadoPor (nvarchar 200)
+  dtAprobado?: string; // dtAprobado (datetime)
+
+  // Campos complementarios de UI y reglas de negocio
+  descripcion: string; // Nombre descriptivo del componente
   fecha: string; // YYYY-MM-DD
   hora: string;  // HH:mm
-  credencial: string;
-  empleado: string;
-  movimientoTipo: CategoriaMotivo;
-  motivoEspecifico: string;
-  cantidad: number;
-  unidad: string;
-  almacenSalida: string;
-  almacenRetorno: string;
   linea: string;
-  almacen: string;
+  almacenSalida?: string;
+  almacenRetorno?: string;
   estatus: EstatusMovimiento;
   turno: Turno;
+  unidad: string;
   costoUnitario: number;
   costoTotal: number;
   ordenProduccion?: string;
   lote?: string;
   observaciones?: string;
-  aprobadoPor?: string;
-  fechaAprobacion?: string;
   comentariosAprobacion?: string;
   historial: HitoHistorial[];
 }
@@ -71,7 +127,7 @@ export interface LineaProduccion {
   nombre: string;
   area: string;
   supervisor: string;
-  metaScrapMaximo: number; // Porcentaje máximo admisible
+  metaScrapMaximo: number;
 }
 
 export interface Notificacion {
@@ -89,6 +145,7 @@ export interface FiltrosMovimientos {
   linea: string;
   estatus: string;
   movimientoTipo: string;
+  razonId: string;
   turno: string;
   fechaInicio: string;
   fechaFin: string;
@@ -100,6 +157,15 @@ export interface ResumenKPIs {
   pendientesAprobar: number;
   aprobadosHoy: number;
   rechazadosHoy: number;
-  tasaScrapGeneral: number; // Porcentaje ej. 1.4%
-  comparativaAyer: number;  // Variación ej. -0.3%
+  tasaScrapGeneral: number;
+  comparativaAyer: number;
+}
+
+export interface BackendDbStatus {
+  connected: boolean;
+  server: string;
+  databaseName: string;
+  tableTarget: string;
+  mode: string;
+  lastError?: string | null;
 }

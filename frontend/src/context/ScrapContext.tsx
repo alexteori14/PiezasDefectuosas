@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
-import type { Motivo, Movimiento, Notificacion, ResumenKPIs, Turno } from '../types';
-import { MOTIVOS_INICIALES, MOVIMIENTOS_INICIALES, NOTIFICACIONES_INICIALES } from '../mock/data';
+import type { Motivo, Movimiento, Notificacion, ResumenKPIs, Turno, RazonCatalogo } from '../types';
+import { MOTIVOS_INICIALES, MOVIMIENTOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
+import { MOVIMIENTO_TIPOS_SSMS } from '../constants';
 
 interface ToastMessage {
   id: string;
@@ -12,6 +13,7 @@ interface ToastMessage {
 interface ScrapContextType {
   movimientos: Movimiento[];
   motivos: Motivo[];
+  razonesCatalogo: RazonCatalogo[];
   notificaciones: Notificacion[];
   turnoActivo: Turno;
   setTurnoActivo: (turno: Turno) => void;
@@ -33,10 +35,10 @@ interface ScrapContextType {
 const ScrapContext = createContext<ScrapContextType | undefined>(undefined);
 
 const STORAGE_KEYS = {
-  MOVIMIENTOS: 'scrap_mes_movimientos_v1',
-  MOTIVOS: 'scrap_mes_motivos_v1',
-  NOTIFICACIONES: 'scrap_mes_notificaciones_v1',
-  TURNO: 'scrap_mes_turno_v1',
+  MOVIMIENTOS: 'scrap_mes_movimientos_ssms_v2',
+  MOTIVOS: 'scrap_mes_motivos_ssms_v2',
+  NOTIFICACIONES: 'scrap_mes_notificaciones_ssms_v2',
+  TURNO: 'scrap_mes_turno_ssms_v2',
 };
 
 export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -63,6 +65,8 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     return MOTIVOS_INICIALES;
   });
+
+  const [razonesCatalogo] = useState<RazonCatalogo[]>(RAZONES_SSMS);
 
   const [notificaciones, setNotificaciones] = useState<Notificacion[]>(() => {
     const guardado = localStorage.getItem(STORAGE_KEYS.NOTIFICACIONES);
@@ -117,27 +121,29 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const aprobarMovimiento = (id: string, comentarios = 'Aprobado conforme a procedimiento de scrap') => {
     const ahora = new Date();
     const fechaHoraStr = `${ahora.toISOString().split('T')[0]} ${ahora.toTimeString().slice(0, 5)}`;
+    const supervisor = 'Ing. Carlos Mendoza';
 
     setMovimientos((prev) =>
       prev.map((m) => {
-        if (m.id === id) {
+        if (m.id === id || m.serial === id) {
           const nuevoHistorial = [
             ...(m.historial || []),
             {
               id: `H-${Date.now()}`,
-              titulo: 'Aprobación de Scrap Autorizada',
-              descripcion: comentarios,
+              titulo: 'Aprobación de Scrap Autorizada (aprobado = 1)',
+              descripcion: `${comentarios} • Registrado en dbo.Movimientos por ${supervisor}`,
               fechaHora: fechaHoraStr,
-              usuario: 'Ing. Carlos Mendoza',
+              usuario: supervisor,
               rol: 'Supervisor de Calidad',
               estado: 'completado' as const,
             },
           ];
           return {
             ...m,
-            estatus: 'Aprobado',
-            aprobadoPor: 'Ing. Carlos Mendoza',
-            fechaAprobacion: fechaHoraStr,
+            aprobado: 1, // 1: Aprobado en SSMS
+            nvAprobadoPor: supervisor,
+            dtAprobado: fechaHoraStr,
+            estatus: 'Aprobado' as const,
             comentariosAprobacion: comentarios,
             historial: nuevoHistorial,
           };
@@ -146,33 +152,36 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    agregarToast('success', 'Movimiento Aprobado', `El folio ${id} fue aprobado y registrado para ajuste en SAP.`);
+    agregarToast('success', 'Movimiento Aprobado', `El folio ${id} fue aprobado (aprobado = 1) en la base de datos.`);
   };
 
   const rechazarMovimiento = (id: string, comentarios = 'Rechazado por evaluación técnica') => {
     const ahora = new Date();
     const fechaHoraStr = `${ahora.toISOString().split('T')[0]} ${ahora.toTimeString().slice(0, 5)}`;
+    const supervisor = 'Ing. Carlos Mendoza';
 
     setMovimientos((prev) =>
       prev.map((m) => {
-        if (m.id === id) {
+        if (m.id === id || m.serial === id) {
           const nuevoHistorial = [
             ...(m.historial || []),
             {
               id: `H-${Date.now()}`,
-              titulo: 'Solicitud de Scrap Rechazada',
-              descripcion: comentarios,
+              titulo: 'Solicitud de Scrap Rechazada (aprobado = 2)',
+              descripcion: `${comentarios} • Desviado de scrap contable a recuperación`,
               fechaHora: fechaHoraStr,
-              usuario: 'Ing. Carlos Mendoza',
+              usuario: supervisor,
               rol: 'Supervisor de Calidad',
               estado: 'rechazado' as const,
             },
           ];
           return {
             ...m,
-            estatus: 'Rechazado',
-            aprobadoPor: 'Ing. Carlos Mendoza',
-            fechaAprobacion: fechaHoraStr,
+            aprobado: 2, // 2: Rechazado en SSMS
+            nvAprobadoPor: supervisor,
+            dtAprobado: fechaHoraStr,
+            estatus: 'Rechazado' as const,
+            almacen: 'ALM-12', // Canalizado a retrabajo
             comentariosAprobacion: comentarios,
             historial: nuevoHistorial,
           };
@@ -181,53 +190,71 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       })
     );
 
-    agregarToast('warning', 'Movimiento Rechazado', `El folio ${id} fue rechazado. Reenviado para análisis.`);
+    agregarToast('warning', 'Movimiento Rechazado', `El folio ${id} fue rechazado (aprobado = 2) y reenviado a análisis.`);
   };
 
   const crearMovimiento = (nuevo: Partial<Movimiento>): Movimiento => {
     const hoy = new Date();
     const fecha = nuevo.fecha || hoy.toISOString().split('T')[0];
     const hora = nuevo.hora || hoy.toTimeString().slice(0, 5);
-    const nuevoId = `SC-${hoy.getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
+    const fechaHora = `${fecha} ${hora}`;
+    const idNumerico = (movimientos.length + 1).toString();
+    const serial = nuevo.serial || `ETQ-2026-${Math.floor(10000 + Math.random() * 90000)}`;
+
+    const tipoObj = MOVIMIENTO_TIPOS_SSMS.find((t) => t.id === nuevo.movimientoTipoId) || MOVIMIENTO_TIPOS_SSMS[0];
+    const razonObj = RAZONES_SSMS.find((r) => r.idRazon === nuevo.razonId) || RAZONES_SSMS[0];
 
     const movimientoCreado: Movimiento = {
-      id: nuevoId,
-      matnr: nuevo.matnr || 'MAT-000000',
-      descripcion: nuevo.descripcion || 'Pieza Automotriz No Especificada',
+      id: idNumerico,
+      certificacionId: nuevo.certificacionId || 101,
+      certificacionNombre: nuevo.certificacionNombre || 'Estación Certificadora Prensa 01',
+      matnr: nuevo.matnr || 'MAT-849201',
+      matnrFg: nuevo.matnrFg || 'FG-CX9-FND-LH',
+      fechaHora,
       fecha,
       hora,
-      credencial: nuevo.credencial || 'EMP-0000',
+      credencial: nuevo.credencial || 'EMP-3041',
+      empleadoId: nuevo.empleadoId || nuevo.credencial || 'EMP-3041',
       empleado: nuevo.empleado || 'Operador en Piso',
-      movimientoTipo: nuevo.movimientoTipo || 'Scrap',
-      motivoEspecifico: nuevo.motivoEspecifico || 'Defecto de Proceso',
+      movimientoTipoId: nuevo.movimientoTipoId || tipoObj.id,
+      movimientoTipo: nuevo.movimientoTipo || tipoObj.nombre,
       cantidad: Number(nuevo.cantidad) || 1,
-      unidad: nuevo.unidad || 'PZA',
+      salida: true,
+      retorno: false,
+      procesado: 0,
+      aprobado: 0, // 0: Pendiente en SSMS
+      razonId: nuevo.razonId || razonObj.idRazon,
+      motivoEspecifico: nuevo.motivoEspecifico || razonObj.descripcion,
+      centroCosto: nuevo.centroCosto || 'CC-ESTAMP',
+      almacen: nuevo.almacen || (tipoObj.id === 1 ? 'ALM-99' : 'ALM-02'),
+      serial,
+      descripcion: nuevo.descripcion || 'Componente Automotriz en Proceso',
+      linea: nuevo.linea || 'L-01 Estampado Pesado Prensa Transfer',
       almacenSalida: nuevo.almacenSalida || 'ALM-02 (WIP)',
       almacenRetorno: nuevo.almacenRetorno || 'ALM-99 (Scrap Yard)',
-      linea: nuevo.linea || 'L-01 Estampado Pesado',
-      almacen: nuevo.almacen || 'ALM-99',
-      estatus: nuevo.estatus || 'Pendiente',
+      estatus: 'Pendiente',
       turno: nuevo.turno || turnoActivo,
-      costoUnitario: Number(nuevo.costoUnitario) || 120,
-      costoTotal: (Number(nuevo.costoUnitario) || 120) * (Number(nuevo.cantidad) || 1),
+      unidad: nuevo.unidad || 'PZA',
+      costoUnitario: Number(nuevo.costoUnitario) || (razonObj.ccSugerido ? parseFloat(razonObj.ccSugerido) : 185),
+      costoTotal: (Number(nuevo.costoUnitario) || 185) * (Number(nuevo.cantidad) || 1),
       ordenProduccion: nuevo.ordenProduccion || `OP-450${Math.floor(1000 + Math.random() * 9000)}`,
-      lote: nuevo.lote || `LOT-${hoy.getFullYear()}${hoy.getMonth() + 1}-X1`,
+      lote: nuevo.lote || `LOT-${hoy.getFullYear()}${hoy.getMonth() + 1}-A1`,
       observaciones: nuevo.observaciones || '',
       historial: [
         {
           id: `H-INIT-${Date.now()}`,
-          titulo: 'Registro de Movimiento en Sistema',
-          descripcion: nuevo.observaciones || 'Alta de movimiento generada en terminal MES.',
-          fechaHora: `${fecha} ${hora}`,
+          titulo: 'Registro de Movimiento en dbo.Movimientos',
+          descripcion: `Etiqueta serial ${serial} emitida en Estación ${nuevo.certificacionId || 101}. Razón ${nuevo.razonId || razonObj.idRazon}: ${nuevo.motivoEspecifico || razonObj.descripcion}.`,
+          fechaHora,
           usuario: nuevo.empleado || 'Operador',
           rol: 'Operador de Producción',
           estado: 'completado',
         },
         {
           id: `H-PEND-${Date.now()}`,
-          titulo: 'Pendiente de Validación',
-          descripcion: 'Enviado a bandeja de aprobaciones de calidad.',
-          fechaHora: `${fecha} ${hora}`,
+          titulo: 'Pendiente de Validación (aprobado = 0)',
+          descripcion: 'Enviado a bandeja de aprobaciones de calidad y supervisor de turno.',
+          fechaHora,
           usuario: 'Sistema MES',
           rol: 'Control',
           estado: 'actual',
@@ -236,26 +263,29 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     };
 
     setMovimientos((prev) => [movimientoCreado, ...prev]);
-    agregarToast('success', 'Movimiento Creado', `Folio ${movimientoCreado.id} registrado correctamente.`);
+    agregarToast('success', 'Movimiento Creado', `Folio serial ${serial} registrado correctamente en la base de datos.`);
     return movimientoCreado;
   };
 
   const crearMotivo = (nuevo: Omit<Motivo, 'id'>): Motivo => {
-    const id = `MOT-${Date.now().toString().slice(-4)}`;
-    const motivoCreado: Motivo = { ...nuevo, id };
-    setMotivos((prev) => [motivoCreado, ...prev]);
-    agregarToast('success', 'Motivo Guardado', `Código ${motivoCreado.codigo} agregado al catálogo.`);
+    const nuevoId = `MOT-${nuevo.razonId || Math.floor(5000 + Math.random() * 1000)}`;
+    const motivoCreado: Motivo = {
+      ...nuevo,
+      id: nuevoId,
+    };
+    setMotivos((prev) => [...prev, motivoCreado]);
+    agregarToast('success', 'Razón Creada', `Razón ${motivoCreado.codigo} agregada al catálogo.`);
     return motivoCreado;
   };
 
   const actualizarMotivo = (id: string, actualizacion: Partial<Motivo>) => {
     setMotivos((prev) => prev.map((m) => (m.id === id ? { ...m, ...actualizacion } : m)));
-    agregarToast('info', 'Motivo Actualizado', 'Los cambios se han guardado.');
+    agregarToast('info', 'Razón Actualizada', 'Los cambios en el catálogo fueron guardados.');
   };
 
   const eliminarMotivo = (id: string) => {
     setMotivos((prev) => prev.filter((m) => m.id !== id));
-    agregarToast('warning', 'Motivo Eliminado', 'El registro fue retirado del catálogo.');
+    agregarToast('warning', 'Razón Eliminada', 'El motivo ha sido retirado del catálogo.');
   };
 
   const marcarNotificacionLeida = (id: string) => {
@@ -274,25 +304,17 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setMovimientos(MOVIMIENTOS_INICIALES);
     setMotivos(MOTIVOS_INICIALES);
     setNotificaciones(NOTIFICACIONES_INICIALES);
-    agregarToast('info', 'Restablecimiento Completo', 'Datos mock reiniciados a los valores de fábrica.');
+    agregarToast('info', 'Datos Reiniciados', 'Valores restaurados al estándar oficial de dbo.Movimientos.');
   };
 
-  // KPIs dinámicos
-  const resumenKPIs: ResumenKPIs = useMemo(() => {
-    const hoyStr = '2026-10-20';
-    const movimientosHoy = movimientos.filter((m) => m.fecha === hoyStr);
-
-    const scrapHoyPzas = movimientosHoy
-      .filter((m) => m.movimientoTipo === 'Scrap')
-      .reduce((sum, m) => sum + m.cantidad, 0);
-
-    const scrapHoyCosto = movimientosHoy
-      .filter((m) => m.movimientoTipo === 'Scrap')
-      .reduce((sum, m) => sum + m.costoTotal, 0);
-
-    const pendientesAprobar = movimientos.filter((m) => m.estatus === 'Pendiente').length;
-    const aprobadosHoy = movimientosHoy.filter((m) => m.estatus === 'Aprobado').length;
-    const rechazadosHoy = movimientosHoy.filter((m) => m.estatus === 'Rechazado').length;
+  // Cálculo reactivo de KPIs ejecutivos
+  const resumenKPIs = useMemo<ResumenKPIs>(() => {
+    const scrapMovs = movimientos.filter((m) => m.movimientoTipoId === 1 || m.movimientoTipo === 'Scrap');
+    const scrapHoyPzas = scrapMovs.reduce((sum, m) => sum + m.cantidad, 0);
+    const scrapHoyCosto = scrapMovs.reduce((sum, m) => sum + m.costoTotal, 0);
+    const pendientesAprobar = movimientos.filter((m) => m.aprobado === 0 || m.estatus === 'Pendiente').length;
+    const aprobadosHoy = movimientos.filter((m) => m.aprobado === 1 || m.estatus === 'Aprobado').length;
+    const rechazadosHoy = movimientos.filter((m) => m.aprobado === 2 || m.estatus === 'Rechazado').length;
 
     return {
       scrapHoyPzas,
@@ -300,8 +322,8 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       pendientesAprobar,
       aprobadosHoy,
       rechazadosHoy,
-      tasaScrapGeneral: 1.18,
-      comparativaAyer: -0.25,
+      tasaScrapGeneral: 1.2,
+      comparativaAyer: -0.4,
     };
   }, [movimientos]);
 
@@ -310,6 +332,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       value={{
         movimientos,
         motivos,
+        razonesCatalogo,
         notificaciones,
         turnoActivo,
         setTurnoActivo,
@@ -336,7 +359,7 @@ export const ScrapProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 export const useScrap = () => {
   const context = useContext(ScrapContext);
   if (!context) {
-    throw new Error('useScrap debe usarse dentro de ScrapProvider');
+    throw new Error('useScrap debe ser usado dentro de un ScrapProvider');
   }
   return context;
 };

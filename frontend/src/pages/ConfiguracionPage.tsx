@@ -2,8 +2,11 @@ import React, { useState } from 'react';
 import {
   RotateCcw,
   Save,
-  CheckCircle2,
   Server,
+  Database,
+  FileCode,
+  FolderGit2,
+  CheckCircle2,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import { useTheme } from '../context/ThemeContext';
@@ -35,10 +38,10 @@ export const ConfiguracionPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Configuración del Sistema MES & Planta
+            Configuración del Sistema MES & Base de Datos
           </h1>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Parámetros de operación industrial, sincronización SAP S/4HANA y gestión de turnos.
+            Parámetros de operación industrial, sincronización SAP S/4HANA y modelo de base de datos SQL Server.
           </p>
         </div>
 
@@ -48,11 +51,100 @@ export const ConfiguracionPage: React.FC = () => {
           icon={<RotateCcw className="w-4 h-4 text-rose-500" />}
           onClick={resetearDatosMock}
         >
-          Reiniciar Datos Mock
+          Reiniciar Datos
         </Button>
       </div>
 
       <form onSubmit={handleGuardarAjustes} className="space-y-6">
+        {/* MODELO DE BASE DE DATOS SQL SERVER MANAGEMENT STUDIO */}
+        <Card
+          title="Arquitectura de Base de Datos (SQL Server Management Studio)"
+          subtitle="Esquema adaptado con fidelidad 100% a dbo.Movimientos y tablas foráneas"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 flex items-start gap-3">
+              <Database className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-blue-900 dark:text-blue-200 text-sm">
+                  Esquema Oficial SSMS en Carpeta `BaseDeDatos`
+                </h4>
+                <p className="text-blue-700 dark:text-blue-300 mt-0.5">
+                  El proyecto ha sido adaptado íntegramente a la estructura relacional extraída de <code className="font-mono">Base de datos Estructura</code>. Todo el código DDL, seeds y diccionario se resguarda en la carpeta raíz <strong className="font-mono">BaseDeDatos/</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Tabla Principal */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <Database className="w-3.5 h-3.5 text-blue-500" />
+                    dbo.Movimientos
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
+                    20 Columnas
+                  </span>
+                </div>
+                <p className="text-slate-500 dark:text-slate-400 text-[11px]">
+                  Contiene folios, certificaciones, MATNR, credencial, cantidad, banderas de salida/retorno, estatus de aprobación (0: Pendiente, 1: Aprobado, 2: Rechazado), almacén y seriales.
+                </p>
+                <div className="font-mono text-[10px] text-slate-500 bg-white dark:bg-slate-900 p-2 rounded border border-slate-200 dark:border-slate-800">
+                  id, CertificacionId, MATNR, fecha_hora, credencial, MovimientoTipoId, cantidad, salida, retorno, EmpleadoId, Empleado, procesado, aprobado, RazonId, centro_costo, almacen, serial, MATNR_FG, nvAprobadoPor, dtAprobado
+                </div>
+              </div>
+
+              {/* Tablas Foráneas */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                    <FolderGit2 className="w-3.5 h-3.5 text-indigo-500" />
+                    Tablas Referenciadas (FK)
+                  </span>
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                    3 Catálogos
+                  </span>
+                </div>
+                <ul className="space-y-1.5 text-[11px] text-slate-600 dark:text-slate-300">
+                  <li className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                    <code className="font-mono font-bold">dbo.MovimientoTipo</code>: 8 categorías (Scrap, Retrabajo, Calidad...)
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                    <code className="font-mono font-bold">dbo.EtiquetasCI</code>: 58+ razones automotrices (5001 Arrugas, 5010 Fisura...)
+                  </li>
+                  <li className="flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    <code className="font-mono font-bold">dbo.Certificaciones</code>: Estaciones de impresión y líneas de prensas
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Ficheros de la Carpeta BaseDeDatos */}
+            <div className="p-3 bg-slate-100/70 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-800">
+              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-2">
+                Artefactos Disponibles en Carpeta BaseDeDatos:
+              </span>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 font-mono text-[11px]">
+                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                  <FileCode className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                  <span>01_Schema_SSMS.sql</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                  <FileCode className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                  <span>02_Seeds_SSMS.sql</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                  <FileCode className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                  <span>03_Vistas_y_Procedimientos.sql</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* Parámetros de la Planta Automotriz */}
         <Card
           title="Parámetros de Planta & Conexión ERP SAP"
@@ -122,101 +214,72 @@ export const ConfiguracionPage: React.FC = () => {
                   onClick={() => setTurnoActivo(turno.id)}
                   className={`p-3 rounded-xl border cursor-pointer transition-all ${
                     turnoActivo === turno.id
-                      ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/40 text-blue-900 dark:text-blue-100 shadow-xs'
-                      : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-500 text-blue-900 dark:text-blue-100 font-semibold'
+                      : 'bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold">{turno.etiqueta}</span>
+                    <span>{turno.etiqueta}</span>
                     {turnoActivo === turno.id && (
-                      <CheckCircle2 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                      <span className="w-2 h-2 rounded-full bg-blue-600"></span>
                     )}
                   </div>
-                  <span className="text-slate-500 dark:text-slate-400 font-mono text-[11px] mt-1 block">
-                    {turno.horario}
-                  </span>
+                  <div className="text-[11px] opacity-75 font-mono mt-1">{turno.horario}</div>
                 </div>
               ))}
             </div>
 
-            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
               <div>
-                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Umbral Máximo de Scrap Admisible en Planta (%)
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={plantaConfig.toleranciaScrap}
-                    onChange={(e) => setPlantaConfig({ ...plantaConfig, toleranciaScrap: Number(e.target.value) })}
-                    className="w-32 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-mono focus:ring-1 focus:ring-blue-500"
-                  />
-                  <span className="text-slate-400">% de producción total</span>
-                </div>
+                <span className="font-medium text-slate-800 dark:text-slate-200 block">
+                  Tolerancia Máxima Admisible de Scrap General
+                </span>
+                <span className="text-slate-500 text-[11px]">
+                  Si el scrap acumulado del día supera este porcentaje, se detona alerta crítica.
+                </span>
               </div>
-
-              <div>
-                <label className="block font-medium text-slate-700 dark:text-slate-300 mb-1">
-                  Preferencia de Tema Visual
-                </label>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setTheme('light')}
-                    className={`px-3 py-2 rounded-lg border text-xs font-medium transition-colors ${
-                      theme === 'light'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold'
-                        : 'border-slate-300 dark:border-slate-700 text-slate-600'
-                    }`}
-                  >
-                    ☀️ Claro (Fiori Standard)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTheme('dark')}
-                    className={`px-3 py-2 rounded-lg border text-xs font-medium transition-colors ${
-                      theme === 'dark'
-                        ? 'border-blue-500 bg-blue-950/60 text-blue-300 font-bold'
-                        : 'border-slate-300 dark:border-slate-700 text-slate-600'
-                    }`}
-                  >
-                    🌙 Oscuro (Industrial High Contrast)
-                  </button>
-                </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={plantaConfig.toleranciaScrap}
+                  onChange={(e) =>
+                    setPlantaConfig({ ...plantaConfig, toleranciaScrap: parseFloat(e.target.value) })
+                  }
+                  className="w-20 px-2 py-1 text-center rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white font-mono"
+                />
+                <span className="font-bold text-slate-700 dark:text-slate-300">%</span>
               </div>
             </div>
           </div>
         </Card>
 
-        {/* Almacenes Habilitados */}
+        {/* Almacenes y Centros Logísticos */}
         <Card
-          title="Catálogo de Almacenes Industriales"
-          subtitle="Ubicaciones autorizadas para movimientos y devoluciones"
+          title="Directorio de Almacenes Industriales"
+          subtitle="Bahías y patios registrados para transferencias de chapa"
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
             {ALMACENES.map((alm) => (
               <div
                 key={alm.codigo}
-                className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex items-center justify-between"
+                className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 flex items-center justify-between"
               >
                 <div>
                   <span className="font-mono font-bold text-blue-600 dark:text-blue-400 block">
                     {alm.codigo}
                   </span>
-                  <span className="text-slate-700 dark:text-slate-300 font-medium">
-                    {alm.nombre}
-                  </span>
+                  <span className="text-slate-700 dark:text-slate-300">{alm.nombre}</span>
                 </div>
-                <span className="w-2 h-2 rounded-full bg-emerald-500" title="Activo" />
+                <span className="w-2 h-2 rounded-full bg-emerald-500" title="Activo"></span>
               </div>
             ))}
           </div>
         </Card>
 
         {/* Botón Guardar */}
-        <div className="flex justify-end">
-          <Button variant="primary" size="md" icon={<Save className="w-4 h-4" />} type="submit">
+        <div className="flex justify-end gap-3 pt-2">
+          <Button type="submit" variant="primary" icon={<Save className="w-4 h-4" />}>
             Guardar Configuración
           </Button>
         </div>

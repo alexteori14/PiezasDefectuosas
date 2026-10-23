@@ -8,19 +8,19 @@ import {
   X,
   FileSpreadsheet,
   RotateCcw,
-  Plus,
+  Database,
+  Tag,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import { Badge } from '../components/common/Badge';
-import { Button } from '../components/common/Button';
 import { Pagination } from '../components/common/Pagination';
 import { descargarCSV } from '../utils/formatters';
 import { CATEGORIAS_MOTIVOS, LINEAS_PRODUCCION } from '../constants';
 
-type CampoOrden = 'id' | 'fecha' | 'matnr' | 'cantidad' | 'estatus' | 'linea';
+type CampoOrden = 'id' | 'fecha' | 'matnr' | 'cantidad' | 'estatus' | 'linea' | 'serial' | 'razonId';
 
 export const MovimientosPage: React.FC = () => {
-  const { movimientos, aprobarMovimiento, rechazarMovimiento } = useScrap();
+  const { movimientos, razonesCatalogo, aprobarMovimiento, rechazarMovimiento } = useScrap();
   const navigate = useNavigate();
 
   // Estados de filtros y búsqueda
@@ -28,6 +28,7 @@ export const MovimientosPage: React.FC = () => {
   const [filtroLinea, setFiltroLinea] = useState('');
   const [filtroEstatus, setFiltroEstatus] = useState('');
   const [filtroTipo, setFiltroTipo] = useState('');
+  const [filtroRazon, setFiltroRazon] = useState('');
   const [filtroTurno, setFiltroTurno] = useState('');
 
   // Ordenamiento
@@ -38,26 +39,32 @@ export const MovimientosPage: React.FC = () => {
   const [paginaActual, setPaginaActual] = useState(1);
   const [elementosPorPagina, setElementosPorPagina] = useState(10);
 
-  // Filtrado reactivo
+  // Filtrado reactivo con soporte para campos de dbo.Movimientos
   const movimientosFiltrados = useMemo(() => {
     return movimientos.filter((m) => {
+      const q = busqueda.toLowerCase().trim();
       const coincideBusqueda =
-        busqueda === '' ||
-        m.id.toLowerCase().includes(busqueda.toLowerCase()) ||
-        m.matnr.toLowerCase().includes(busqueda.toLowerCase()) ||
-        m.descripcion.toLowerCase().includes(busqueda.toLowerCase()) ||
-        m.empleado.toLowerCase().includes(busqueda.toLowerCase()) ||
-        m.credencial.toLowerCase().includes(busqueda.toLowerCase()) ||
-        m.linea.toLowerCase().includes(busqueda.toLowerCase());
+        q === '' ||
+        m.id.toString().includes(q) ||
+        (m.serial && m.serial.toLowerCase().includes(q)) ||
+        m.matnr.toLowerCase().includes(q) ||
+        (m.matnrFg && m.matnrFg.toLowerCase().includes(q)) ||
+        m.descripcion.toLowerCase().includes(q) ||
+        m.empleado.toLowerCase().includes(q) ||
+        m.credencial.toLowerCase().includes(q) ||
+        (m.motivoEspecifico && m.motivoEspecifico.toLowerCase().includes(q)) ||
+        (m.razonId && m.razonId.toString().includes(q)) ||
+        m.linea.toLowerCase().includes(q);
 
       const coincideLinea = filtroLinea === '' || m.linea.includes(filtroLinea);
       const coincideEstatus = filtroEstatus === '' || m.estatus === filtroEstatus;
       const coincideTipo = filtroTipo === '' || m.movimientoTipo === filtroTipo;
+      const coincideRazon = filtroRazon === '' || (m.razonId && m.razonId.toString() === filtroRazon);
       const coincideTurno = filtroTurno === '' || m.turno === filtroTurno;
 
-      return coincideBusqueda && coincideLinea && coincideEstatus && coincideTipo && coincideTurno;
+      return coincideBusqueda && coincideLinea && coincideEstatus && coincideTipo && coincideRazon && coincideTurno;
     });
-  }, [movimientos, busqueda, filtroLinea, filtroEstatus, filtroTipo, filtroTurno]);
+  }, [movimientos, busqueda, filtroLinea, filtroEstatus, filtroTipo, filtroRazon, filtroTurno]);
 
   // Ordenar resultados
   const movimientosOrdenados = useMemo(() => {
@@ -68,6 +75,9 @@ export const MovimientosPage: React.FC = () => {
       if (ordenCampo === 'fecha') {
         valorA = `${a.fecha} ${a.hora}`;
         valorB = `${b.fecha} ${b.hora}`;
+      } else if (ordenCampo === 'id') {
+        valorA = Number(a.id) || 0;
+        valorB = Number(b.id) || 0;
       }
 
       if (typeof valorA === 'string') {
@@ -98,64 +108,63 @@ export const MovimientosPage: React.FC = () => {
     setFiltroLinea('');
     setFiltroEstatus('');
     setFiltroTipo('');
+    setFiltroRazon('');
     setFiltroTurno('');
     setPaginaActual(1);
   };
 
   return (
     <div className="space-y-5">
-      {/* Cabecera */}
+      {/* Cabecera de Página */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Registro General de Movimientos
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
+              Control de Movimientos de Materiales
+            </h1>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+              <Database className="w-3 h-3" />
+              dbo.Movimientos
+            </span>
+          </div>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Auditoría integral de movimientos, salidas de almacén, devoluciones y desecho de materiales.
+            Registro unificado de piezas no conformes, scrap y retrabajos con serial de marbete y trazabilidad IATF 16949.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
-          <Button
-            variant="outline"
-            size="sm"
-            icon={<FileSpreadsheet className="w-4 h-4 text-emerald-600" />}
-            onClick={() => descargarCSV(movimientosFiltrados, `movimientos-filtrados-${new Date().toISOString().slice(0, 10)}.csv`)}
+        {/* Acciones de Cabecera */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => descargarCSV(movimientosFiltrados, 'movimientos-dbo-scrap.csv')}
+            className="flex items-center gap-2 px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors shadow-xs"
+            title="Exportar registros filtrados a CSV"
           >
-            Descargar ({movimientosFiltrados.length})
-          </Button>
-
-          <Button
-            variant="primary"
-            size="sm"
-            icon={<Plus className="w-4 h-4" />}
-            onClick={() => navigate('/dashboard')}
-          >
-            Nuevo Registro
-          </Button>
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Exportar CSV</span>
+          </button>
         </div>
       </div>
 
       {/* Barra de Filtros y Búsqueda */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
-        <div className="flex flex-col md:flex-row items-center gap-3">
-          {/* Búsqueda Global */}
-          <div className="relative flex-1 w-full">
-            <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+      <div className="p-4 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          {/* Buscador General */}
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
-              placeholder="Buscar por ID, MATNR, Empleado, Credencial, Pieza..."
               value={busqueda}
               onChange={(e) => {
                 setBusqueda(e.target.value);
                 setPaginaActual(1);
               }}
-              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="Buscar por Folio Serial, MATNR, MATNR_FG, Razón o Empleado..."
+              className="w-full pl-9 pr-4 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
 
-          {/* Filtros Dropdowns */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 w-full md:w-auto">
+          {/* Filtros Dropdown */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
             {/* Filtro Línea */}
             <select
               value={filtroLinea}
@@ -173,7 +182,7 @@ export const MovimientosPage: React.FC = () => {
               ))}
             </select>
 
-            {/* Filtro Estatus */}
+            {/* Filtro Estatus / Aprobado */}
             <select
               value={filtroEstatus}
               onChange={(e) => {
@@ -182,15 +191,14 @@ export const MovimientosPage: React.FC = () => {
               }}
               className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              <option value="">Todos los Estatus</option>
-              <option value="Pendiente">Pendiente</option>
-              <option value="Aprobado">Aprobado</option>
-              <option value="Rechazado">Rechazado</option>
+              <option value="">Estado Aprobación</option>
+              <option value="Pendiente">Pendiente (aprobado = 0)</option>
+              <option value="Aprobado">Aprobado (aprobado = 1)</option>
+              <option value="Rechazado">Rechazado (aprobado = 2)</option>
               <option value="En Cuarentena">En Cuarentena</option>
-              <option value="Retrabajo">Retrabajo</option>
             </select>
 
-            {/* Filtro Tipo */}
+            {/* Filtro Tipo de Movimiento */}
             <select
               value={filtroTipo}
               onChange={(e) => {
@@ -200,9 +208,26 @@ export const MovimientosPage: React.FC = () => {
               className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Tipo Movimiento</option>
-              {CATEGORIAS_MOTIVOS.map((cat) => (
+              {CATEGORIAS_MOTIVOS.map((cat, idx) => (
                 <option key={cat} value={cat}>
-                  {cat}
+                  {idx + 1} - {cat}
+                </option>
+              ))}
+            </select>
+
+            {/* Filtro Razón de Falla */}
+            <select
+              value={filtroRazon}
+              onChange={(e) => {
+                setFiltroRazon(e.target.value);
+                setPaginaActual(1);
+              }}
+              className="px-2.5 py-2 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Razón (EtiquetasCI)</option>
+              {razonesCatalogo.slice(0, 15).map((r) => (
+                <option key={r.idRazon} value={r.idRazon.toString()}>
+                  {r.idRazon} - {r.descripcion}
                 </option>
               ))}
             </select>
@@ -210,7 +235,7 @@ export const MovimientosPage: React.FC = () => {
             {/* Limpiar */}
             <button
               onClick={limpiarFiltros}
-              className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
+              className="flex items-center justify-center gap-1 px-3 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:white bg-slate-100 dark:bg-slate-800 rounded-lg transition-colors"
               title="Restablecer filtros"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -231,7 +256,7 @@ export const MovimientosPage: React.FC = () => {
                   className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-1">
-                    <span>ID</span>
+                    <span>ID / Serial</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   </div>
                 </th>
@@ -240,7 +265,7 @@ export const MovimientosPage: React.FC = () => {
                   className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-1">
-                    <span>MATNR</span>
+                    <span>MATNR (SAP)</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   </div>
                 </th>
@@ -254,7 +279,8 @@ export const MovimientosPage: React.FC = () => {
                   </div>
                 </th>
                 <th className="px-4 py-3">Credencial</th>
-                <th className="px-4 py-3">Movimiento</th>
+                <th className="px-4 py-3">Tipo Movimiento</th>
+                <th className="px-4 py-3">Razón (EtiquetasCI)</th>
                 <th
                   onClick={() => alternarOrden('cantidad')}
                   className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-right"
@@ -264,25 +290,14 @@ export const MovimientosPage: React.FC = () => {
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   </div>
                 </th>
-                <th className="px-4 py-3">Salida</th>
-                <th className="px-4 py-3">Retorno</th>
-                <th className="px-4 py-3">Empleado</th>
-                <th
-                  onClick={() => alternarOrden('linea')}
-                  className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                >
-                  <div className="flex items-center gap-1">
-                    <span>Línea</span>
-                    <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  </div>
-                </th>
                 <th className="px-4 py-3">Almacén</th>
+                <th className="px-4 py-3">Empleado</th>
                 <th
                   onClick={() => alternarOrden('estatus')}
                   className="px-4 py-3 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                 >
                   <div className="flex items-center gap-1">
-                    <span>Estatus</span>
+                    <span>Aprobado</span>
                     <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   </div>
                 </th>
@@ -293,8 +308,8 @@ export const MovimientosPage: React.FC = () => {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80 font-normal">
               {movimientosPaginados.length === 0 ? (
                 <tr>
-                  <td colSpan={13} className="px-4 py-10 text-center text-slate-500">
-                    No se encontraron movimientos con los filtros aplicados.
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-500">
+                    No se encontraron movimientos registrados en dbo.Movimientos con los filtros aplicados.
                   </td>
                 </tr>
               ) : (
@@ -303,27 +318,35 @@ export const MovimientosPage: React.FC = () => {
                     key={mov.id}
                     className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors group"
                   >
-                    {/* ID */}
-                    <td className="px-4 py-3 font-mono font-bold text-blue-600 dark:text-blue-400">
+                    {/* ID y Serial */}
+                    <td className="px-4 py-3 font-mono">
                       <button
                         onClick={() => navigate(`/movimientos/${mov.id}`)}
-                        className="hover:underline flex items-center gap-1"
+                        className="text-blue-600 dark:text-blue-400 font-bold hover:underline flex flex-col text-left"
                       >
-                        {mov.id}
+                        <span>#{mov.id}</span>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">
+                          {mov.serial}
+                        </span>
                       </button>
                     </td>
 
-                    {/* MATNR */}
+                    {/* MATNR y MATNR_FG */}
                     <td className="px-4 py-3">
                       <div className="font-mono font-semibold text-slate-800 dark:text-slate-200">
                         {mov.matnr}
                       </div>
-                      <div className="text-[11px] text-slate-400 max-w-[160px] truncate">
+                      <div className="text-[11px] text-slate-400 max-w-[150px] truncate">
                         {mov.descripcion}
                       </div>
+                      {mov.matnrFg && (
+                        <span className="inline-block text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">
+                          FG: {mov.matnrFg}
+                        </span>
+                      )}
                     </td>
 
-                    {/* Fecha */}
+                    {/* Fecha y Hora */}
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       <div>{mov.fecha}</div>
                       <div className="text-[10px] text-slate-400">{mov.hora} • {mov.turno}</div>
@@ -334,11 +357,24 @@ export const MovimientosPage: React.FC = () => {
                       {mov.credencial}
                     </td>
 
-                    {/* Movimiento */}
+                    {/* MovimientoTipoId */}
                     <td className="px-4 py-3 font-medium text-slate-700 dark:text-slate-200">
                       <span className="inline-block px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px]">
-                        {mov.movimientoTipo}
+                        {mov.movimientoTipoId} - {mov.movimientoTipo}
                       </span>
+                    </td>
+
+                    {/* RazonId (EtiquetasCI) */}
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <Tag className="w-3 h-3 text-slate-400 shrink-0" />
+                        <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">
+                          {mov.razonId}
+                        </span>
+                        <span className="text-slate-500 dark:text-slate-400 truncate max-w-[130px]">
+                          {mov.motivoEspecifico}
+                        </span>
+                      </div>
                     </td>
 
                     {/* Cantidad */}
@@ -346,63 +382,52 @@ export const MovimientosPage: React.FC = () => {
                       {mov.cantidad} <span className="text-[10px] text-slate-400 font-normal">{mov.unidad}</span>
                     </td>
 
-                    {/* Salida */}
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-[11px]">
-                      {mov.almacenSalida}
-                    </td>
-
-                    {/* Retorno */}
-                    <td className="px-4 py-3 text-slate-500 dark:text-slate-400 text-[11px]">
-                      {mov.almacenRetorno}
+                    {/* Almacén */}
+                    <td className="px-4 py-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800">
+                        {mov.almacen}
+                      </span>
                     </td>
 
                     {/* Empleado */}
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-300">
-                      {mov.empleado}
+                      <div className="truncate max-w-[120px]">{mov.empleado}</div>
                     </td>
 
-                    {/* Línea */}
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      <span className="font-semibold">{mov.linea.split(' ')[0]}</span>{' '}
-                      <span className="text-[10px] text-slate-400 hidden xl:inline">
-                        {mov.linea.split(' ').slice(1, 3).join(' ')}
-                      </span>
-                    </td>
-
-                    {/* Almacén */}
-                    <td className="px-4 py-3 font-mono text-[11px] text-slate-500">
-                      {mov.almacen}
-                    </td>
-
-                    {/* Estatus */}
+                    {/* Estatus / Aprobado */}
                     <td className="px-4 py-3">
                       <Badge estatus={mov.estatus} size="sm" />
+                      {mov.nvAprobadoPor && (
+                        <div className="text-[10px] text-slate-400 truncate max-w-[110px] mt-0.5">
+                          {mov.nvAprobadoPor}
+                        </div>
+                      )}
                     </td>
 
                     {/* Acciones */}
                     <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
+                      <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => navigate(`/movimientos/${mov.id}`)}
-                          className="p-1 rounded text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                          title="Ver Detalle y Trazabilidad"
+                          className="p-1 rounded text-slate-500 hover:text-blue-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          title="Ver Ficha Técnica 360°"
                         >
                           <Eye className="w-4 h-4" />
                         </button>
 
-                        {mov.estatus === 'Pendiente' && (
+                        {mov.aprobado === 0 && (
                           <>
                             <button
                               onClick={() => aprobarMovimiento(mov.id)}
                               className="p-1 rounded text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 transition-colors"
-                              title="Aprobar Movimiento"
+                              title="Aprobar Movimiento (aprobado = 1)"
                             >
                               <Check className="w-4 h-4" />
                             </button>
                             <button
                               onClick={() => rechazarMovimiento(mov.id)}
                               className="p-1 rounded text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-                              title="Rechazar Movimiento"
+                              title="Rechazar Movimiento (aprobado = 2)"
                             >
                               <X className="w-4 h-4" />
                             </button>
@@ -418,17 +443,19 @@ export const MovimientosPage: React.FC = () => {
         </div>
 
         {/* Paginación */}
-        <Pagination
-          paginaActual={paginaActual}
-          totalPaginas={totalPaginas}
-          totalElementos={movimientosOrdenados.length}
-          elementosPorPagina={elementosPorPagina}
-          onCambiarPagina={(pag) => setPaginaActual(pag)}
-          onCambiarElementosPorPagina={(cant) => {
-            setElementosPorPagina(cant);
-            setPaginaActual(1);
-          }}
-        />
+        {totalPaginas > 1 && (
+          <Pagination
+            paginaActual={paginaActual}
+            totalPaginas={totalPaginas}
+            totalElementos={movimientosOrdenados.length}
+            elementosPorPagina={elementosPorPagina}
+            onCambiarPagina={(p: number) => setPaginaActual(p)}
+            onCambiarElementosPorPagina={(cant: number) => {
+              setElementosPorPagina(cant);
+              setPaginaActual(1);
+            }}
+          />
+        )}
       </div>
     </div>
   );

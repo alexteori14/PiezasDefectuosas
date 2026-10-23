@@ -75,7 +75,7 @@ export const TopHeader: React.FC<TopHeaderProps> = ({ onOpenMobileMenu }) => {
               {INFO_PLANTA.nombre}
             </span>
             <span className="text-[10px] text-slate-500 dark:text-slate-400">
-              SAP Org: {INFO_PLANTA.codigoSapPlanta} • Magna Body
+              SAP Org: {INFO_PLANTA.codigoSapPlanta} • SSMS dbo.Movimientos
             </span>
           </div>
         </div>

@@ -35,19 +35,22 @@ import { CATEGORIAS_MOTIVOS, LINEAS_PRODUCCION } from '../constants';
 import type { CategoriaMotivo } from '../types';
 
 export const DashboardPage: React.FC = () => {
-  const { movimientos, resumenKPIs, turnoActivo, crearMovimiento } = useScrap();
+  const { movimientos, resumenKPIs, turnoActivo, crearMovimiento, razonesCatalogo } = useScrap();
   const navigate = useNavigate();
 
   // Modal para registro rápido
   const [modalRegistroAbierto, setModalRegistroAbierto] = useState(false);
   const [formNuevo, setFormNuevo] = useState({
     matnr: 'MAT-849201',
+    matnrFg: 'FG-CX9-FND-LH',
     descripcion: 'Fender Delantero Izq Mod CX-9',
-    linea: 'L-01 Estampado Pesado',
+    linea: 'L-01 Estampado Pesado Prensa Transfer',
+    movimientoTipoId: 1,
     movimientoTipo: 'Scrap' as CategoriaMotivo,
-    motivoEspecifico: 'Deformación y Arruga en Embutido Profundo',
+    razonId: 5001,
+    motivoEspecifico: 'Arrugas',
     cantidad: 5,
-    costoUnitario: 145,
+    costoUnitario: 185,
     empleado: 'Ing. Operador Turno',
     credencial: 'EMP-9012',
     observaciones: 'Falla detectada en inspección de salida de prensa.',
@@ -100,6 +103,11 @@ export const DashboardPage: React.FC = () => {
     e.preventDefault();
     crearMovimiento({
       ...formNuevo,
+      certificacionId: 101,
+      aprobado: 0,
+      salida: true,
+      retorno: false,
+      procesado: 0,
       almacenSalida: 'ALM-02 (WIP)',
       almacenRetorno: formNuevo.movimientoTipo === 'Scrap' ? 'ALM-99 (Scrap Yard)' : 'ALM-12 (Retrabajo)',
       almacen: formNuevo.movimientoTipo === 'Scrap' ? 'ALM-99' : 'ALM-12',

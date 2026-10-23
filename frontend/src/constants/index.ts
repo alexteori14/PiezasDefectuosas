@@ -1,10 +1,11 @@
-import type { CategoriaMotivo, EstatusMovimiento, Turno } from '../types';
+import type { CategoriaMotivo, EstatusMovimiento, Turno, MovimientoTipoCatalogo, CertificacionCatalogo } from '../types';
 
 export const INFO_PLANTA = {
   nombre: 'Planta Saltillo - Carrocerías & Estampado',
   organizacion: 'Magna Exteriors & Stamping Division',
   codigoSapPlanta: '1020',
   sistema: 'SAP S/4HANA & MES Industry 4.0',
+  baseDeDatos: 'SQL Server (SSMS) - Tabla dbo.Movimientos',
 };
 
 export const TURNOS_PLANTA: { id: Turno; etiqueta: string; horario: string }[] = [
@@ -13,16 +14,42 @@ export const TURNOS_PLANTA: { id: Turno; etiqueta: string; horario: string }[] =
   { id: 'Turno 3', etiqueta: 'Turno 3 (Nocturno)', horario: '22:30 - 06:00' },
 ];
 
+/**
+ * Catálogo Oficial de dbo.MovimientoTipo (IDs 1 al 8 según Estructura.txt)
+ */
+export const MOVIMIENTO_TIPOS_SSMS: MovimientoTipoCatalogo[] = [
+  { id: 1, nombre: 'Scrap', descripcion: 'Descarte total de material sin recuperación', activo: true },
+  { id: 2, nombre: 'Retrabajo en Linea', descripcion: 'Recuperación inmediata en celda de producción', activo: true },
+  { id: 3, nombre: 'Calidad', descripcion: 'Muestreo para análisis de laboratorio o CMM', activo: true },
+  { id: 4, nombre: 'Cuarentena', descripcion: 'Retención de lote preventivo por calidad', activo: true },
+  { id: 5, nombre: 'Calidad Reingreso', descripcion: 'Reincorporación de material liberado por calidad', activo: true },
+  { id: 6, nombre: 'metal Finish', descripcion: 'Acondicionamiento cosmético o pulido de chapa', activo: true },
+  { id: 7, nombre: 'Traspaleo', descripcion: 'Reacomodo logístico de contenedores/racks', activo: true },
+  { id: 8, nombre: 'Impresion Parcial', descripcion: 'Falla de marbete o impresión incompleta', activo: true },
+];
+
 export const CATEGORIAS_MOTIVOS: CategoriaMotivo[] = [
   'Scrap',
-  'Retrabajo en Línea',
+  'Retrabajo en Linea',
   'Calidad',
   'Cuarentena',
   'Calidad Reingreso',
-  'Metal Finish',
+  'metal Finish',
   'Traspaleo',
-  'Impresión Parcial',
-  'Reingreso Parcial',
+  'Impresion Parcial',
+];
+
+/**
+ * Catálogo Oficial de dbo.Certificaciones (Estaciones de impresión de etiquetas)
+ */
+export const CERTIFICACIONES_PLANTA: CertificacionCatalogo[] = [
+  { id: 101, nombre: 'Estación Certificadora Prensa 01', linea: 'L-01', estacion: 'EST-01', ubicacion: 'Prensas Transfer', activo: true },
+  { id: 102, nombre: 'Estación Certificadora Prensa 02', linea: 'L-02', estacion: 'EST-02', ubicacion: 'Prensas Tándem', activo: true },
+  { id: 103, nombre: 'Celda Certificación Soldadura A', linea: 'L-03', estacion: 'EST-W1', ubicacion: 'Soldadura Robótica', activo: true },
+  { id: 104, nombre: 'Celda Certificación Soldadura B', linea: 'L-03', estacion: 'EST-W2', ubicacion: 'Soldadura Robótica', activo: true },
+  { id: 105, nombre: 'Estación Final Metal Finish 01', linea: 'L-05', estacion: 'EST-MF1', ubicacion: 'Bahía de Acabados', activo: true },
+  { id: 106, nombre: 'Mesa de Calidad y CMM Central', linea: 'CAL-01', estacion: 'LAB-CMM', ubicacion: 'Metrología', activo: true },
+  { id: 107, nombre: 'Bahía de Cuarentena e Inspección', linea: 'CUA-01', estacion: 'ALM-05', ubicacion: 'Cuarentena', activo: true },
 ];
 
 export const LINEAS_PRODUCCION = [
