@@ -1,5 +1,5 @@
 import { obtenerPool } from '../config/database.connection.js';
-import type { MovimientoDB, MovimientoDetalleDTO, FiltrosMovimientosQuery } from '../types/index.js';
+import type { MovimientoDB, MovimientoDetalleDTO, FiltrosMovimientosQuery, ResumenScrapLineaDB } from '../types/index.js';
 
 const NOMBRES_TIPOS_MOVIMIENTO: Record<number, string> = {
   1: 'Scrap',
@@ -44,6 +44,34 @@ function aplicarFiltros(movimientos: MovimientoDetalleDTO[], filtros: FiltrosMov
 }
 
 export class MovimientosRepository {
+  async obtenerScrapPorLinea(): Promise<ResumenScrapLineaDB[]> {
+    const pool = await obtenerPool();
+    if (!pool) {
+      throw new Error('No hay conexión activa con SQL Server.');
+    }
+
+    const resultado = await pool.request().query<ResumenScrapLineaDB>(`
+      SELECT
+        certificacion.LineaId AS lineaId,
+        COUNT_BIG(*) AS movimientos,
+        SUM(CONVERT(BIGINT, movimiento.cantidad)) AS piezasScrap
+      FROM dbo.Movimientos AS movimiento
+      LEFT JOIN dbo.Certificacion AS certificacion
+        ON certificacion.id = movimiento.CertificacionId
+      WHERE movimiento.fecha_hora >= '20250101'
+        AND movimiento.fecha_hora < '20260101'
+        AND movimiento.MovimientoTipoId = 1
+      GROUP BY certificacion.LineaId
+      ORDER BY piezasScrap DESC
+    `);
+
+    return resultado.recordset.map((fila) => ({
+      lineaId: fila.lineaId,
+      movimientos: Number(fila.movimientos),
+      piezasScrap: Number(fila.piezasScrap),
+    }));
+  }
+
   async listar(filtros: FiltrosMovimientosQuery = {}): Promise<MovimientoDetalleDTO[]> {
     const pool = await obtenerPool();
     if (!pool) {

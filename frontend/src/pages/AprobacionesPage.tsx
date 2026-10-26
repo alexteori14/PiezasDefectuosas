@@ -1,12 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
-  Eye,
-  Filter,
-  FileCheck2,
-  Database,
-  Tag,
   Check,
+  Database,
+  FileCheck2,
+  Filter,
+  Search,
+  Tag,
   X,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
@@ -14,42 +13,68 @@ import type { Movimiento } from '../types';
 import { Button } from '../components/common/Button';
 import { Modal } from '../components/common/Modal';
 
+type Decision = 1 | 2;
+type Revision = { movimiento: Movimiento; decision: Decision };
+
+const valorDato = (valor: string | number | boolean | null | undefined) => {
+  if (valor === null || valor === undefined || valor === '') return 'No disponible';
+  if (typeof valor === 'boolean') return valor ? 'Sí' : 'No';
+  return String(valor);
+};
+
+const CampoDato: React.FC<{ etiqueta: string; valor: string | number | boolean | null | undefined; mono?: boolean }> = ({
+  etiqueta,
+  valor,
+  mono = false,
+}) => (
+  <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-700 dark:bg-slate-800/70">
+    <span className="block text-[10px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">{etiqueta}</span>
+    <span className={`mt-1 block break-words text-xs font-semibold text-slate-800 dark:text-slate-100 ${mono ? 'font-mono' : ''}`}>
+      {valorDato(valor)}
+    </span>
+  </div>
+);
+
 export const AprobacionesPage: React.FC = () => {
   const { movimientos, razonesCatalogo, aprobarMovimiento, rechazarMovimiento } = useScrap();
-  const navigate = useNavigate();
   const descripcionPorRazon = useMemo(
     () => new Map(razonesCatalogo.map((razon) => [razon.idRazon, razon.descripcion])),
     [razonesCatalogo],
   );
-
   const [filtroCertificacion, setFiltroCertificacion] = useState('');
-  const [modalDetalle, setModalDetalle] = useState<Movimiento | null>(null);
-  const [dictamenObjetivo, setDictamenObjetivo] = useState<{ movimiento: Movimiento; decision: 1 | 2 } | null>(null);
+  const [busquedaFechaHora, setBusquedaFechaHora] = useState('');
+  const [revision, setRevision] = useState<Revision | null>(null);
   const [nombreResponsable, setNombreResponsable] = useState('');
   const [dictamenEnviando, setDictamenEnviando] = useState(false);
   const [errorDictamen, setErrorDictamen] = useState<string | null>(null);
 
-  const pendientes = movimientos.filter((m) => {
-    const esPendiente = m.aprobado === 0 || m.estatus === 'Pendiente';
-    const coincideCertificacion = filtroCertificacion === '' || String(m.certificacionId) === filtroCertificacion;
-    return esPendiente && coincideCertificacion;
+  const pendientes = movimientos.filter((movimiento) => {
+    const esPendiente = movimiento.aprobado === 0 || movimiento.estatus === 'Pendiente';
+    const coincideCertificacion = filtroCertificacion === ''
+      || String(movimiento.certificacionId) === filtroCertificacion;
+    const fechaHora = (movimiento.fechaHora || `${movimiento.fecha} ${movimiento.hora}`)
+      .replace('T', ' ')
+      .toLocaleLowerCase();
+    const coincideFechaHora = busquedaFechaHora.trim() === ''
+      || fechaHora.includes(busquedaFechaHora.trim().replace('T', ' ').toLocaleLowerCase());
+    return esPendiente && coincideCertificacion && coincideFechaHora;
   });
 
-  const abrirConfirmacionDictamen = (movimiento: Movimiento, decision: 1 | 2) => {
-    setDictamenObjetivo({ movimiento, decision });
+  const abrirRevision = (movimiento: Movimiento, decision: Decision) => {
+    setRevision({ movimiento, decision });
     setNombreResponsable('');
     setErrorDictamen(null);
   };
 
-  const cerrarConfirmacionDictamen = () => {
+  const cerrarRevision = () => {
     if (dictamenEnviando) return;
-    setDictamenObjetivo(null);
+    setRevision(null);
     setErrorDictamen(null);
   };
 
   const confirmarDictamen = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!dictamenObjetivo) return;
+    if (!revision) return;
 
     const responsable = nombreResponsable.trim();
     if (!responsable) {
@@ -60,12 +85,12 @@ export const AprobacionesPage: React.FC = () => {
     setDictamenEnviando(true);
     setErrorDictamen(null);
     try {
-      if (dictamenObjetivo.decision === 1) {
-        await aprobarMovimiento(dictamenObjetivo.movimiento.id, responsable);
+      if (revision.decision === 1) {
+        await aprobarMovimiento(revision.movimiento.id, responsable);
       } else {
-        await rechazarMovimiento(dictamenObjetivo.movimiento.id, responsable);
+        await rechazarMovimiento(revision.movimiento.id, responsable);
       }
-      setDictamenObjetivo(null);
+      setRevision(null);
     } catch (error) {
       setErrorDictamen(error instanceof Error ? error.message : 'No se pudo guardar el dictamen.');
     } finally {
@@ -73,273 +98,250 @@ export const AprobacionesPage: React.FC = () => {
     }
   };
 
+  const movimientoRevision = revision?.movimiento;
+  const datosBase = movimientoRevision?.datosDB;
+  const razonRevision = movimientoRevision?.razonId === null
+    ? 'Sin razón'
+    : movimientoRevision?.razonId === undefined
+      ? 'No disponible'
+      : `${movimientoRevision.razonId} - ${descripcionPorRazon.get(movimientoRevision.razonId) || movimientoRevision.motivoEspecifico || 'Descripción no disponible'}`;
+
   return (
     <div className="space-y-5">
-      {/* Cabecera y Resumen de Mesa de Aprobación */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Bandeja de Aprobaciones de Scrap
-            </h1>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
-              <Database className="w-3 h-3" />
-              {pendientes.length} Pendientes (aprobado = 0)
-            </span>
-          </div>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Validación técnica y dictamen en <code className="font-mono text-blue-600 dark:text-blue-400">dbo.Movimientos</code> para autorización de scrap y contabilización contable.
-          </p>
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
+            Bandeja de Aprobaciones de Scrap
+          </h1>
+          <span className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:border-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
+            <Database className="h-3 w-3" />
+            {pendientes.length} pendientes
+          </span>
         </div>
-
-        {/* Acciones Globales */}
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 sm:text-sm">
+          Revisa la ficha completa del componente antes de emitir un dictamen.
+        </p>
       </div>
 
       <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
-        Los dictámenes se guardan en SQL Server: se registra el nombre capturado en <code>nvAprobadoPor</code> y la fecha/hora del servidor en <code>dtAprobado</code>. El nombre capturado no verifica por sí mismo la identidad del usuario.
+        El dictamen guarda el nombre capturado en <code>nvAprobadoPor</code> y la fecha/hora del servidor en <code>dtAprobado</code>. El nombre no verifica por sí mismo la identidad del usuario.
       </div>
 
-      {/* Barra de Filtro de Línea */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 shadow-xs dark:border-slate-800 dark:bg-slate-900">
         <div className="flex items-center gap-2 text-xs">
-          <Filter className="w-4 h-4 text-slate-400" />
-          <span className="font-semibold text-slate-700 dark:text-slate-300">Filtrar por Certificación:</span>
+          <Filter className="h-4 w-4 text-slate-400" />
+          <label htmlFor="filtro-certificacion" className="font-semibold text-slate-700 dark:text-slate-300">
+            Certificación:
+          </label>
           <select
+            id="filtro-certificacion"
             value={filtroCertificacion}
-            onChange={(e) => setFiltroCertificacion(e.target.value)}
-            className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            onChange={(event) => setFiltroCertificacion(event.target.value)}
+            className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
           >
-            <option value="">Todas las certificaciones</option>
+            <option value="">Todas</option>
             {[...new Set(movimientos.map((movimiento) => movimiento.certificacionId))].map((id) => (
               <option key={id} value={String(id)}>Certificación {id}</option>
             ))}
           </select>
         </div>
-
-        <div className="text-xs text-slate-500 dark:text-slate-400 font-mono">
-          Tabla destino: <strong className="text-slate-700 dark:text-slate-300">dbo.Movimientos (SSMS)</strong>
+        <div className="flex min-w-[240px] flex-1 items-center gap-2 text-xs sm:max-w-md">
+          <Search className="h-4 w-4 shrink-0 text-slate-400" />
+          <label htmlFor="busqueda-fecha-hora" className="sr-only">Buscar por fecha y hora de emisión</label>
+          <input
+            id="busqueda-fecha-hora"
+            type="search"
+            value={busquedaFechaHora}
+            onChange={(event) => setBusquedaFechaHora(event.target.value)}
+            placeholder="Buscar fecha y hora (AAAA-MM-DD HH:mm)"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+          />
         </div>
+        <span className="ml-auto text-xs font-mono text-slate-500 dark:text-slate-400">
+          dbo.Movimientos
+        </span>
       </div>
 
-      {/* TABLA DE SOLICITUDES PENDIENTES */}
-      <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs dark:border-slate-800 dark:bg-slate-900">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs whitespace-nowrap">
-            <thead className="bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 uppercase font-semibold text-[11px] tracking-wider border-b border-slate-200 dark:border-slate-800">
+          <table className="w-full min-w-[760px] text-left text-xs">
+            <thead className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
               <tr>
-                <th className="px-4 py-3">ID / Serial</th>
-                <th className="px-4 py-3">Número de Parte (MATNR)</th>
-                <th className="px-4 py-3">Fecha de emisión</th>
-                <th className="px-4 py-3">Razón de Falla</th>
-                <th className="px-4 py-3">Tipo Movimiento</th>
+                <th className="px-4 py-3">Folio / emisión</th>
+                <th className="px-4 py-3">Componente</th>
+                <th className="px-4 py-3">Razón</th>
                 <th className="px-4 py-3 text-right">Cantidad</th>
-                <th className="px-4 py-3">Almacén</th>
-                <th className="px-4 py-3">Credencial</th>
-                <th className="px-4 py-3 text-center">Acciones</th>
+                <th className="px-4 py-3 text-center">Dictamen</th>
               </tr>
             </thead>
-
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
               {pendientes.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center">
-                    <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
-                      <FileCheck2 className="w-10 h-10 text-emerald-500/70" />
-                      <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">
-                        ¡Todo al día! No hay registros con aprobado = 0 pendientes.
-                      </p>
-                      <p className="text-xs text-slate-500">
-                        Todas las solicitudes de este turno han sido autorizadas o canalizadas a retrabajo.
+                  <td colSpan={5} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <FileCheck2 className="h-10 w-10 text-emerald-500/70" />
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                        {busquedaFechaHora || filtroCertificacion
+                          ? 'No hay solicitudes que coincidan con los filtros.'
+                          : '¡Todo al día! No hay solicitudes pendientes.'}
                       </p>
                     </div>
                   </td>
                 </tr>
-              ) : (
-                pendientes.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="hover:bg-amber-50/30 dark:hover:bg-slate-800/40 transition-colors"
-                  >
-                    {/* ID y Serial */}
-                    <td className="px-4 py-3 font-mono">
-                      <div className="font-bold text-blue-600 dark:text-blue-400">#{item.id}</div>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400">{item.serial}</div>
-                    </td>
-
-                    {/* Número de Parte */}
-                    <td className="px-4 py-3">
-                      <div className="font-mono font-bold text-slate-900 dark:text-white">
-                        {item.matnr}
-                      </div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 max-w-[180px] truncate">
-                        {item.descripcion}
-                      </div>
-                      {item.matnrFg && (
-                        <div className="text-[10px] text-indigo-500 font-mono">FG: {item.matnrFg}</div>
-                      )}
-                    </td>
-
-                    {/* Fecha y hora de emisión desde fecha_hora */}
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      <div>{item.fecha}</div>
-                      <div className="text-[10px] text-slate-400">{item.hora}</div>
-                    </td>
-
-                    {/* Razón */}
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <Tag className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">
-                          {item.razonId}
-                        </span>
-                        <span className="text-slate-600 dark:text-slate-300 max-w-[160px] truncate">
-                          {item.razonId === null
-                            ? 'Sin razón'
-                            : descripcionPorRazon.get(item.razonId) || 'Descripción no disponible'}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* Tipo Movimiento */}
-                    <td className="px-4 py-3">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-medium">
-                        {item.movimientoTipoId} - {item.movimientoTipo}
+              ) : pendientes.map((item) => (
+                <tr key={item.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                  <td className="px-4 py-3">
+                    <div className="font-mono font-bold text-blue-600 dark:text-blue-400">#{item.id}</div>
+                    <div className="mt-0.5 whitespace-nowrap font-mono text-[10px] text-slate-500 dark:text-slate-400">
+                      {(item.fechaHora || `${item.fecha} ${item.hora}`).replace('T', ' ')}
+                    </div>
+                  </td>
+                  <td className="max-w-[260px] px-4 py-3">
+                    <div className="truncate font-mono font-bold text-slate-800 dark:text-slate-200" title={item.matnr}>{item.matnr}</div>
+                    <div className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={item.descripcion}>{item.descripcion || item.serial}</div>
+                  </td>
+                  <td className="max-w-[220px] px-4 py-3">
+                    <div className="flex items-center gap-1.5">
+                      <Tag className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                      <span className="truncate text-slate-700 dark:text-slate-300" title={razonRevision}>
+                        {item.razonId === null ? 'Sin razón' : `${item.razonId} · ${descripcionPorRazon.get(item.razonId) || item.motivoEspecifico || 'Sin descripción'}`}
                       </span>
-                    </td>
-
-                    {/* Cantidad */}
-                    <td className="px-4 py-3 font-mono font-bold text-right text-rose-600 dark:text-rose-400">
-                      {item.cantidad} <span className="text-[10px] text-slate-400 font-normal">{item.unidad}</span>
-                    </td>
-
-                    {/* Almacén */}
-                    <td className="px-4 py-3 font-mono text-[11px] text-slate-600 dark:text-slate-300">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-bold">
-                        {item.almacen}
-                      </span>
-                    </td>
-
-                    {/* Reporta */}
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      <div className="font-mono">{item.credencial}</div>
-                      <div className="text-[10px] text-slate-400">Empleado pendiente de integración</div>
-                    </td>
-
-                    {/* Acciones */}
-                    <td className="px-4 py-3 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        {/* Ver Detalle */}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          icon={<Eye className="w-3.5 h-3.5" />}
-                          onClick={() => setModalDetalle(item)}
-                        >
-                          Detalle
-                        </Button>
-                        <Button
-                          variant="success"
-                          size="sm"
-                          icon={<Check className="w-3.5 h-3.5" />}
-                          onClick={() => abrirConfirmacionDictamen(item, 1)}
-                        >
-                          Aprobar
-                        </Button>
-                        <Button
-                          variant="danger"
-                          size="sm"
-                          icon={<X className="w-3.5 h-3.5" />}
-                          onClick={() => abrirConfirmacionDictamen(item, 2)}
-                        >
-                          Rechazar
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
+                    </div>
+                    <div className="mt-0.5 pl-5 text-[10px] text-slate-500 dark:text-slate-400">{item.movimientoTipoId} · {item.movimientoTipo}</div>
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono font-bold text-slate-800 dark:text-slate-100">
+                    {item.cantidad} {item.unidad}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex justify-center gap-2">
+                      <Button
+                        variant="success"
+                        size="sm"
+                        className="min-w-[96px]"
+                        icon={<Check className="h-3.5 w-3.5" />}
+                        onClick={() => abrirRevision(item, 1)}
+                      >
+                        Aprobar
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        className="min-w-[96px]"
+                        icon={<X className="h-3.5 w-3.5" />}
+                        onClick={() => abrirRevision(item, 2)}
+                      >
+                        Denegar
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* MODAL DETALLE RÁPIDO */}
       <Modal
-        isOpen={!!modalDetalle}
-        onClose={() => setModalDetalle(null)}
-        title={`Detalle de Solicitud • Folio #${modalDetalle?.id}`}
-        subtitle={`Serial: ${modalDetalle?.serial} • MATNR: ${modalDetalle?.matnr}`}
-        maxWidth="lg"
+        isOpen={!!revision}
+        onClose={cerrarRevision}
+        title={revision?.decision === 1 ? 'Revisión para aprobar' : 'Revisión para denegar'}
+        subtitle={`Ficha completa del componente · Folio #${movimientoRevision?.id ?? ''}`}
+        maxWidth="4xl"
       >
-        {modalDetalle && (
-          <div className="space-y-4 text-xs">
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
-                <span className="text-[10px] text-slate-400 block">Certificación (Estación)</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">ID {modalDetalle.certificacionId}</span>
+        {revision && movimientoRevision && (
+          <form onSubmit={confirmarDictamen} className="space-y-5">
+            <section>
+              <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Identificación del componente</h2>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                <CampoDato etiqueta="Folio" valor={movimientoRevision.id} mono />
+                <CampoDato etiqueta="Serial" valor={movimientoRevision.serial} mono />
+                <CampoDato etiqueta="MATNR" valor={movimientoRevision.matnr} mono />
+                <CampoDato etiqueta="MATNR producto terminado" valor={movimientoRevision.matnrFg} mono />
+                <CampoDato etiqueta="Descripción" valor={movimientoRevision.descripcion} />
+                <CampoDato etiqueta="Fecha y hora de emisión" valor={movimientoRevision.fechaHora || `${movimientoRevision.fecha} ${movimientoRevision.hora}`} mono />
+                <CampoDato etiqueta="Certificación" valor={`${movimientoRevision.certificacionId}${movimientoRevision.certificacionNombre ? ` · ${movimientoRevision.certificacionNombre}` : ''}`} />
+                <CampoDato etiqueta="Línea" valor={movimientoRevision.linea} />
               </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
-                <span className="text-[10px] text-slate-400 block">Tipo Movimiento</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">
-                  {modalDetalle.movimientoTipoId} - {modalDetalle.movimientoTipo}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
-                <span className="text-[10px] text-slate-400 block">Razón (EtiquetasCI)</span>
-                <span className="font-bold text-amber-600 dark:text-amber-400">
-                  {modalDetalle.razonId === null
-                    ? 'Sin razón'
-                    : `${modalDetalle.razonId} - ${descripcionPorRazon.get(modalDetalle.razonId) || 'Descripción no disponible'}`}
-                </span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
-                <span className="text-[10px] text-slate-400 block">Almacén Destino</span>
-                <span className="font-bold font-mono text-slate-800 dark:text-slate-200">{modalDetalle.almacen}</span>
-              </div>
-              <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800">
-                <span className="text-[10px] text-slate-400 block">Cantidad</span>
-                <span className="font-bold text-slate-800 dark:text-slate-200">
-                  {modalDetalle.cantidad} {modalDetalle.unidad}
-                </span>
-              </div>
-            </div>
+            </section>
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setModalDetalle(null);
-                  navigate(`/movimientos/${modalDetalle.id}`);
-                }}
-              >
-                Abrir Ficha Técnica Completa 360°
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setModalDetalle(null)}>
-                Cerrar
-              </Button>
-            </div>
-          </div>
-        )}
-      </Modal>
+            <section>
+              <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Movimiento y material</h2>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                <CampoDato etiqueta="Tipo de movimiento" valor={`${movimientoRevision.movimientoTipoId} · ${movimientoRevision.movimientoTipo}`} />
+                <CampoDato etiqueta="Razón" valor={razonRevision} />
+                <CampoDato etiqueta="Motivo específico" valor={movimientoRevision.motivoEspecifico} />
+                <CampoDato etiqueta="Cantidad" valor={`${movimientoRevision.cantidad} ${movimientoRevision.unidad}`} />
+                <CampoDato etiqueta="Costo unitario" valor={movimientoRevision.costoUnitario} />
+                <CampoDato etiqueta="Costo total" valor={movimientoRevision.costoTotal} />
+                <CampoDato etiqueta="Almacén" valor={movimientoRevision.almacen} mono />
+                <CampoDato etiqueta="Almacén de salida" valor={movimientoRevision.almacenSalida} mono />
+                <CampoDato etiqueta="Almacén de retorno" valor={movimientoRevision.almacenRetorno} mono />
+                <CampoDato etiqueta="Centro de costo" valor={movimientoRevision.centroCosto} mono />
+                <CampoDato etiqueta="Orden de producción" valor={movimientoRevision.ordenProduccion} mono />
+                <CampoDato etiqueta="Lote" valor={movimientoRevision.lote} mono />
+              </div>
+            </section>
 
-      <Modal
-        isOpen={!!dictamenObjetivo}
-        onClose={cerrarConfirmacionDictamen}
-        title={dictamenObjetivo?.decision === 1 ? 'Confirmar aprobación' : 'Confirmar rechazo'}
-        subtitle={`Movimiento #${dictamenObjetivo?.movimiento.id} · ${dictamenObjetivo?.movimiento.matnr}`}
-        maxWidth="md"
-      >
-        {dictamenObjetivo && (
-          <form onSubmit={confirmarDictamen} className="space-y-4">
-            <p className="text-sm text-slate-600 dark:text-slate-300">
-              {dictamenObjetivo.decision === 1
-                ? 'Al confirmar, el movimiento quedará aprobado.'
-                : 'Al confirmar, el movimiento quedará rechazado.'}
-              {' '}SQL Server guardará la fecha y hora de esta acción.
-            </p>
-            <div>
-              <label htmlFor="nombre-responsable" className="mb-1 block text-xs font-medium text-slate-700 dark:text-slate-300">
+            <section>
+              <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Reporte y estado del registro</h2>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                <CampoDato etiqueta="Empleado" valor={movimientoRevision.empleado} />
+                <CampoDato etiqueta="ID de empleado" valor={movimientoRevision.empleadoId} mono />
+                <CampoDato etiqueta="Credencial" valor={movimientoRevision.credencial} mono />
+                <CampoDato etiqueta="Turno" valor={movimientoRevision.turno} />
+                <CampoDato etiqueta="Salida" valor={movimientoRevision.salida} />
+                <CampoDato etiqueta="Retorno" valor={movimientoRevision.retorno} />
+                <CampoDato etiqueta="Procesado" valor={movimientoRevision.procesado} />
+                <CampoDato etiqueta="Estado actual" valor={`${movimientoRevision.aprobado ?? 'N/D'} · ${movimientoRevision.estatus}`} />
+                <CampoDato etiqueta="Aprobado por" valor={movimientoRevision.nvAprobadoPor} />
+                <CampoDato etiqueta="Fecha de aprobación" valor={movimientoRevision.dtAprobado} mono />
+                <CampoDato etiqueta="Observaciones" valor={movimientoRevision.observaciones} />
+                <CampoDato etiqueta="Comentarios de aprobación" valor={movimientoRevision.comentariosAprobacion} />
+              </div>
+            </section>
+
+            {movimientoRevision.historial.length > 0 && (
+              <section>
+                <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Historial</h2>
+                <div className="space-y-2">
+                  {movimientoRevision.historial.map((hito) => (
+                    <div key={hito.id} className="rounded-lg border border-slate-200 px-3 py-2 text-xs dark:border-slate-700">
+                      <div className="flex flex-wrap justify-between gap-1">
+                        <span className="font-semibold text-slate-800 dark:text-slate-100">{hito.titulo} · {hito.estado}</span>
+                        <span className="font-mono text-slate-500">{hito.fechaHora}</span>
+                      </div>
+                      <p className="mt-1 text-slate-600 dark:text-slate-300">{hito.descripcion}</p>
+                      <p className="mt-1 text-slate-500">Responsable: {hito.usuario} · {hito.rol}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {datosBase && (
+              <details className="rounded-lg border border-slate-200 px-3 py-2 dark:border-slate-700">
+                <summary className="cursor-pointer text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  Ver valores originales de dbo.Movimientos
+                </summary>
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {Object.entries(datosBase).map(([columna, valor]) => (
+                    <CampoDato key={columna} etiqueta={columna} valor={valor} mono />
+                  ))}
+                </div>
+              </details>
+            )}
+
+            <section className={`rounded-xl border p-4 ${revision.decision === 1
+              ? 'border-emerald-200 bg-emerald-50/70 dark:border-emerald-900 dark:bg-emerald-950/30'
+              : 'border-rose-200 bg-rose-50/70 dark:border-rose-900 dark:bg-rose-950/30'}`}
+            >
+              <h2 className="text-sm font-bold text-slate-900 dark:text-white">
+                {revision.decision === 1 ? 'Confirmar aprobación' : 'Confirmar denegación'}
+              </h2>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">
+                Al confirmar, se actualizará el dictamen y SQL Server registrará la fecha y hora.
+              </p>
+              <label htmlFor="nombre-responsable" className="mb-1 mt-3 block text-xs font-medium text-slate-700 dark:text-slate-300">
                 Nombre del responsable
               </label>
               <input
@@ -354,23 +356,24 @@ export const AprobacionesPage: React.FC = () => {
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
                 placeholder="Nombre y apellido"
               />
-            </div>
+            </section>
+
             {errorDictamen && (
               <div role="alert" className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200">
                 {errorDictamen}
               </div>
             )}
             <div className="flex justify-end gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
-              <Button type="button" variant="ghost" onClick={cerrarConfirmacionDictamen} disabled={dictamenEnviando}>
+              <Button type="button" variant="ghost" onClick={cerrarRevision} disabled={dictamenEnviando}>
                 Cancelar
               </Button>
               <Button
                 type="submit"
-                variant={dictamenObjetivo.decision === 1 ? 'success' : 'danger'}
+                variant={revision.decision === 1 ? 'success' : 'danger'}
                 loading={dictamenEnviando}
                 disabled={!nombreResponsable.trim()}
               >
-                {dictamenObjetivo.decision === 1 ? 'Confirmar aprobación' : 'Confirmar rechazo'}
+                {revision.decision === 1 ? 'Confirmar aprobación' : 'Confirmar denegación'}
               </Button>
             </div>
           </form>

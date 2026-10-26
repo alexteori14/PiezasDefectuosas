@@ -146,6 +146,12 @@ export interface Movimiento {
   historial: HitoHistorial[];
 }
 
+export interface ResumenScrapLinea {
+  lineaId: number | null;
+  movimientos: number;
+  piezasScrap: number;
+}
+
 export interface LineaProduccion {
   id: string;
   codigo: string;

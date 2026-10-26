@@ -95,7 +95,7 @@ export const DashboardPage: React.FC = () => {
     .sort((a, b) => b.value - a.value)
     .slice(0, 5);
 
-  const COLORES_MOTIVOS = ['#ef4444', '#f97316', '#f59e0b', '#3b82f6', '#8b5cf6'];
+  const COLORES_MOTIVOS = ['#e11d48', '#2563eb', '#be123c', '#1d4ed8', '#fb7185'];
   const scrapPiezasPeriodo = useMemo(
     () => movimientosDelPeriodo
       .filter((movimiento) => movimiento.movimientoTipoId === 1)
@@ -348,7 +348,7 @@ export const DashboardPage: React.FC = () => {
                   {incidenciaPorLinea.map((entry, index) => (
                     <Cell
                       key={`bar-${index}`}
-                      fill={entry.piezas > 20 ? '#ef4444' : entry.piezas > 10 ? '#f59e0b' : '#3b82f6'}
+                      fill={entry.piezas > 20 ? '#e11d48' : entry.piezas > 10 ? '#2563eb' : '#60a5fa'}
                     />
                   ))}
                 </Bar>

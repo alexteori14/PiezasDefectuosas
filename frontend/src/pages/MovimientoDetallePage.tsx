@@ -4,11 +4,7 @@ import {
   ArrowLeft,
   Printer,
   ShieldCheck,
-  User,
-  Database,
   Tag,
-  Factory,
-  Layers,
 } from 'lucide-react';
 import { useScrap } from '../context/ScrapContext';
 import { Button } from '../components/common/Button';

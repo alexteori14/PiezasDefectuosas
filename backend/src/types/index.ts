@@ -25,6 +25,12 @@ export interface MovimientoDetalleDTO extends MovimientoDB {
   MovimientoTipoNombre?: string;
 }
 
+export interface ResumenScrapLineaDB {
+  lineaId: number | null;
+  movimientos: number;
+  piezasScrap: number;
+}
+
 export interface MovimientoTipoDB {
   id: number;
   nombre: string;

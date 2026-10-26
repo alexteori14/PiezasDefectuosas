@@ -11,7 +11,7 @@ Inspirado en los lineamientos visuales y de interacción de **SAP Fiori**, **Mic
 - **Dashboard Ejecutivo & Operativo:**
   - KPIs en tiempo real: *Scrap Generado Hoy*, *Pendiente de Aprobar*, *Aprobado*, *Rechazado/Salvado* y *OEE Loss Rate*.
   - Gráfica interactiva de área con gradiente de tendencia horaria contra límites de tolerancia admisible.
-  - Análisis Pareto de causas raíz de defectos en gráfica tipo Donut interactiva.
+  - Comparación de las cinco razones principales de Scrap mediante gráfica de barras horizontales.
   - Distribución de incidencias acumuladas por línea de producción (L-01 a L-07).
   - Modal para registro rápido de incidencias en piso de producción.
 
@@ -24,15 +24,19 @@ Inspirado en los lineamientos visuales y de interacción de **SAP Fiori**, **Mic
 
 - **Mesa Digital de Aprobaciones:**
   - Interfaz diseñada específicamente para el rol de Supervisor de Calidad en planta.
-  - Columnas: *Línea, Número de Parte, Hora, Turno, Cantidad, Motivo, Reporta*.
-  - Acciones con confirmación visual: **Aprobar** (con cálculo de impacto en dólares y firma digital), **Rechazar** (con justificación obligatoria) y **Ver Detalle**.
-  - Soporte de selección múltiple y aprobación en lote.
-  - Actualización reactiva instantánea en todos los contadores de la aplicación.
+  - Tabla compacta con folio y fecha/hora de emisión, componente, razón, cantidad y acciones de dictamen visibles.
+  - Búsqueda de solicitudes pendientes por fecha/hora de emisión (`fecha_hora`) y filtro por certificación.
+  - **Aprobar** y **Denegar** abren la ficha completa del componente antes de solicitar el nombre del responsable y confirmar el dictamen.
+  - El backend guarda el estado, nombre capturado y fecha/hora del servidor en SQL Server; el nombre no comprueba la identidad del usuario.
 
 - **Catálogo CRUD de Motivos de Defecto:**
   - Clasificación por categorías: *Scrap, Retrabajo en Línea, Calidad, Cuarentena, Calidad Reingreso, Metal Finish, Traspaleo, Impresión Parcial, Reingreso Parcial*.
   - Códigos estandarizados, severidades (*Crítica, Alta, Media, Baja*), criterios de inspección y costos de referencia.
   - Alta, edición, desactivación y eliminación interactiva con persistencia local.
+
+- **Fallas por línea:**
+  - Resume las piezas de movimientos tipo **Scrap** agrupadas por `Certificacion.LineaId`, relacionado con `Movimientos.CertificacionId`.
+  - Presenta gráfica de barras, número de movimientos y buscador; la consulta se ejecuta en SQL Server y limita los datos a 2025.
 
 - **Módulo de Reportes & Análisis Financiero:**
   - Filtros cruzados por rango de fechas, línea de ensamble, turno y motivo específico.

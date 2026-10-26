@@ -18,9 +18,8 @@ El proyecto está construido sobre el ecosistema moderno de React con TypeScript
 | **Tailwind CSS** | 4.3.3 | Motor de diseño con `@tailwindcss/vite` |
 | **React Router DOM** | 7.18.4 | Enrutamiento del lado del cliente (SPA) con histórico |
 | **Framer Motion** | 14.4.0 | Animaciones de modales, transiciones de tarjetas y toasts |
-| **Recharts** | 3.10.1 | Visualización de datos interactiva (Áreas, Barras, Donut Pareto) |
+| **Recharts** | 3.10.1 | Visualización de datos interactiva (áreas y barras) |
 | **Lucide React** | 1.60.0 | Iconografía corporativa e industrial de alta coherencia |
-| **clsx & tailwind-merge** | 2.1.1 / 3.7.0 | Utilidades para composición condicional de clases CSS |
 
 ---
 
@@ -40,7 +39,6 @@ frontend/
     ├── main.tsx                 # Montaje de React DOM en el nodo '#root'
     ├── App.tsx                  # Enrutador central y Providers de Contexto
     ├── index.css                # Directivas Tailwind v4 y scrollbars industriales
-    ├── assets/                  # Recursos estáticos
     ├── constants/
     │   └── index.ts             # Constantes maestras (Líneas, Almacenes, Colores SAP)
     ├── types/
@@ -52,10 +50,6 @@ frontend/
     │   └── ThemeContext.tsx     # Contexto de modo Claro / Oscuro con clase en <html>
     ├── services/
     │   └── scrapService.ts      # Servicios mock asíncronos y simulador BAPI SAP 551
-    ├── hooks/
-    │   └── useScrapDashboard.ts # Custom hook con lógica derivada de ranking y turnos
-    ├── features/
-    │   └── index.ts             # Barril de exportación de características de dominio
     ├── utils/
     │   └── formatters.ts        # Funciones de moneda, fechas, exportador CSV y PDF
     ├── components/
@@ -77,6 +71,7 @@ frontend/
         ├── MovimientoDetallePage.tsx # Ficha 360°, marbete físico y timeline de hitos
         ├── AprobacionesPage.tsx # Mesa de aprobación técnica de scrap por supervisor
         ├── MotivosPage.tsx      # Catálogo CRUD interactivo de causas y defectos
+        ├── FallasPorLineaPage.tsx # Piezas Scrap agrupadas por línea
         ├── ReportesPage.tsx     # Inteligencia de datos, filtros avanzados y exportador
         └── ConfiguracionPage.tsx# Ajustes de planta, turnos, umbrales y reset de datos
 ```
@@ -237,6 +232,7 @@ La navegación está gobernada por `react-router-dom` con la siguiente topologí
 ├── /movimientos/:id     -> MovimientoDetallePage (Detalle 360° y marbete)
 ├── /aprobaciones        -> AprobacionesPage (Bandeja de supervisor)
 ├── /motivos             -> MotivosPage (Catálogo CRUD)
+├── /fallas-por-linea    -> FallasPorLineaPage (Resumen Scrap por línea)
 ├── /reportes            -> ReportesPage (Análisis y exportación)
 └── /configuracion       -> ConfiguracionPage (Parámetros y reset)
 ```
@@ -283,7 +279,7 @@ Cualquier ruta inválida o la raíz `/` redirige automáticamente a `/dashboard`
 ### 7.1 Dashboard (`DashboardPage.tsx`)
 - **Visualización de KPIs:** 4 `StatCard` principales sincronizadas con el turno activo.
 - **Gráfica de Tendencia Horaria:** Implementada con `AreaChart` de Recharts, con gradiente SVG carmesí y tooltip oscuro de alto contraste.
-- **Donut Pareto de Causas:** Implementado con `PieChart`, `innerRadius: 50` y `outerRadius: 80`, desglosando los 5 motivos principales con leyenda compacta.
+- **Razones principales de Scrap:** gráfica de barras horizontales (`BarChart`) que compara las cinco razones con mayor cantidad; no se usan gráficas tipo pastel.
 - **Gráfica de Barras por Línea:** `BarChart` con código de colores según criticidad de piezas descartadas.
 - **Modal de Registro Rápido:** Permite registrar un scrap manualmente sin salir del tablero.
 
@@ -294,10 +290,10 @@ Cualquier ruta inválida o la raíz `/` redirige automáticamente a `/dashboard`
 - Ordenamiento bidireccional por columna al hacer clic sobre la cabecera.
 
 ### 7.3 Mesa de Aprobaciones (`AprobacionesPage.tsx`)
-- Diseñada siguiendo la referencia visual de piso de manufactura: *Línea, Número de Parte, Hora, Turno, Cantidad, Motivo, Reporta*.
-- Filtra exclusivamente las solicitudes con estatus `'Pendiente'`.
-- Acciones rápidas de un clic para **Aprobar** o **Rechazar**, con modales de confirmación donde el supervisor puede redactar instrucciones de disposición o motivos de rechazo.
-- Soporte para selección múltiple con casillas de verificación y botón de **Aprobar Seleccionados** en lote.
+- Presenta una tabla compacta con folio y fecha/hora de emisión, componente, razón, cantidad y acciones **Aprobar** y **Denegar** visibles.
+- Filtra movimientos pendientes por certificación y permite buscar por fecha/hora de emisión de `dbo.Movimientos.fecha_hora`; admite fragmentos como `2025-05-14 08:30`.
+- Al elegir una acción, abre una ficha de revisión con los datos disponibles del componente, movimiento, reporte, estado e historial. Cuando existe, también permite desplegar la fila original de SQL.
+- La ficha solicita el nombre del responsable y requiere confirmar antes de guardar el dictamen. La API modifica solo filas pendientes y guarda `aprobado`, `nvAprobadoPor` y `dtAprobado`; el nombre capturado no es autenticación.
 
 ### 7.4 Catálogo de Motivos (`MotivosPage.tsx`)
 - Vista en cuadrícula responsiva con tarjetas de defectos.
@@ -305,7 +301,12 @@ Cualquier ruta inválida o la raíz `/` redirige automáticamente a `/dashboard`
 - Formulario modal para registrar o modificar motivos, incluyendo códigos de defecto, descripciones y costo económico promedio.
 - Conmutador visual para habilitar o inhabilitar motivos en tiempo real.
 
-### 7.5 Reportes e Inteligencia Operacional (`ReportesPage.tsx`)
+### 7.5 Fallas por línea (`FallasPorLineaPage.tsx`)
+- Resume movimientos con `MovimientoTipoId = 1` (Scrap), sumando `cantidad` y agrupando por `Certificacion.LineaId`.
+- El backend resuelve la relación en SQL Server: `Movimientos.CertificacionId` → `Certificacion.id` → `Certificacion.LineaId`. Filtra el periodo del 2025 y devuelve el total de piezas y movimientos por línea.
+- La pantalla presenta KPIs, una gráfica de barras, una tabla y un buscador. Las líneas se identifican por el valor real de `LineaId`; no se sustituyen por nombres o etiquetas locales no verificadas.
+
+### 7.6 Reportes e Inteligencia Operacional (`ReportesPage.tsx`)
 - Filtros por rango de fechas (`fechaInicio` y `fechaFin`), línea de ensamblado, turno y motivo específico.
 - KPIs consolidados: *Piezas Totales Afectadas, Costo Total en USD, Piezas Scrap Definitivo y Piezas Recuperadas/Retrabajo*.
 - Gráfica de barras de costo imputado por línea de producción.
@@ -383,6 +384,6 @@ npm run preview
 
 El frontend consulta `GET /api/movimientos`; por defecto, el backend filtra desde SQL Server únicamente las filas de 2025 mediante `fecha_hora` (`>= 2025-01-01` y `< 2026-01-01`), sin cargar otros años. La API admite `fechaInicio` (incluyente) y `fechaFin` (excluyente), en formato `YYYY-MM-DD`, para consultas técnicas con otro rango; las vistas actuales no mandan esos parámetros. El tablero muestra de forma fija el año 2025. La respuesta conserva las columnas originales de la tabla. La interfaz presenta los campos indicados como utilizables en `Base de datos Estructura/Estructura.txt`; los campos marcados como ignorados o pendientes no se utilizan todavía.
 
-La bandeja envía `PATCH /api/movimientos/:id/dictamen` para aprobar o rechazar. La API exige una decisión válida y el nombre del responsable; modifica solo filas con `aprobado = 0`, guarda la decisión en `aprobado`, el nombre en `nvAprobadoPor` y la hora del servidor SQL en `dtAprobado`. Las altas de movimientos, catálogos en vivo y la integración con SAP siguen pendientes.
+La bandeja presenta solicitudes en una tabla compacta y permite buscar por una parte de la fecha/hora original (`fecha_hora`), además de filtrar por certificación. Al seleccionar **Aprobar** o **Denegar**, abre una ficha con la información disponible del componente antes de solicitar confirmación. La ficha presenta campos del modelo de UI y, si el API proporcionó la fila original, permite desplegar sus columnas de SQL. La acción envía `PATCH /api/movimientos/:id/dictamen`; la API exige una decisión válida y el nombre del responsable, modifica solo filas con `aprobado = 0`, guarda la decisión en `aprobado`, el nombre en `nvAprobadoPor` y la hora del servidor SQL en `dtAprobado`. Las altas de movimientos, catálogos en vivo y la integración con SAP siguen pendientes.
 
 El nombre del responsable es ingresado manualmente y no autentica al empleado. La API no tiene autenticación/autorización de usuario implementada; antes de exponer esta acción fuera de un entorno controlado, integrar identidad y restringir el acceso de red y de base de datos. Los dictámenes se guardan en datos reales y no se revierten por la interfaz.

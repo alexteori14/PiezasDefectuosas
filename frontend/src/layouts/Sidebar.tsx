@@ -52,6 +52,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <FolderKanban className="w-5 h-5 shrink-0" />,
     },
     {
+      to: '/fallas-por-linea',
+      label: 'Fallas por línea',
+      icon: <Factory className="w-5 h-5 shrink-0" />,
+    },
+    {
       to: '/reportes',
       label: 'Reportes y Métricas',
       icon: <FileBarChart className="w-5 h-5 shrink-0" />,

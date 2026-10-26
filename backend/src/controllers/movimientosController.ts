@@ -106,3 +106,13 @@ export async function getKPIs(_req: Request, res: Response) {
     res.status(500).json({ exitoso: false, mensaje });
   }
 }
+
+export async function getScrapPorLinea(_req: Request, res: Response) {
+  try {
+    const datos = await repo.obtenerScrapPorLinea();
+    res.json({ exitoso: true, datos });
+  } catch (error) {
+    const mensaje = error instanceof Error ? error.message : 'Error al obtener Scrap por línea.';
+    res.status(500).json({ exitoso: false, mensaje });
+  }
+}

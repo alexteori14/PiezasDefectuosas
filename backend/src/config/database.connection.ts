@@ -122,7 +122,7 @@ export function obtenerEstadoConexion() {
       principal: 'dbo.Movimientos',
       tipos: 'dbo.MovimientoTipo',
       razones: 'dbo.EtiquetasCI',
-      certificaciones: 'dbo.Certificaciones',
+      certificaciones: 'dbo.Certificacion',
     },
   };
 }

@@ -24,7 +24,7 @@ export function getDbStatus(): DbConfigInfo {
   return {
     motor: 'SQL Server',
     tablaPrincipal: 'dbo.Movimientos',
-    tablasRelacionadas: ['dbo.MovimientoTipo', 'dbo.EtiquetasCI', 'dbo.Certificaciones'],
+    tablasRelacionadas: ['dbo.MovimientoTipo', 'dbo.EtiquetasCI', 'dbo.Certificacion'],
     modo: `Conexión ${conexion.autenticacion} configurada`,
     rutaScripts: 'BaseDeDatos/',
     archivoConexion: 'BaseDeDatos/.env',

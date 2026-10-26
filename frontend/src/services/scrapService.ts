@@ -1,4 +1,4 @@
-import type { Movimiento, MovimientoDB, Motivo, Notificacion, RazonCatalogo, MovimientoTipoCatalogo, CertificacionCatalogo } from '../types';
+import type { Movimiento, MovimientoDB, Motivo, Notificacion, RazonCatalogo, MovimientoTipoCatalogo, CertificacionCatalogo, ResumenScrapLinea } from '../types';
 import { MOTIVOS_INICIALES, NOTIFICACIONES_INICIALES, RAZONES_SSMS } from '../mock/data';
 import { MOVIMIENTO_TIPOS_SSMS, CERTIFICACIONES_PLANTA } from '../constants';
 
@@ -71,12 +71,23 @@ async function enviarDictamen(id: string, aprobado: 1 | 2, aprobadoPor: string):
   }
 }
 
+async function solicitarScrapPorLinea(): Promise<ResumenScrapLinea[]> {
+  const response = await fetch(`${API_BASE}/movimientos/fallas-por-linea`);
+  const body = await response.json() as { exitoso: boolean; datos?: ResumenScrapLinea[]; mensaje?: string };
+  if (!response.ok || !body.exitoso || !body.datos) {
+    throw new Error(body.mensaje || `No se pudo cargar Scrap por línea (HTTP ${response.status}).`);
+  }
+  return body.datos;
+}
+
 /**
  * Movimientos se leen de SQL Server. Los catálogos secundarios siguen siendo locales
  * hasta que se acuerde integrar sus tablas. Los dictámenes se guardan en SQL Server.
  */
 export const ScrapService = {
   obtenerMovimientos: () => solicitarMovimientos(),
+
+  obtenerScrapPorLinea: () => solicitarScrapPorLinea(),
 
   aprobarMovimiento: (id: string, aprobadoPor: string) => enviarDictamen(id, 1, aprobadoPor),
 
